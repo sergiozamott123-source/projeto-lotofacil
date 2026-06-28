@@ -1,0 +1,269 @@
+import { useState, useEffect, useCallback } from 'react'
+import { analiseAPI, sorteiosAPI } from '../services/api'
+
+function Ball({ numero, variant = 'default', size = 'md' }) {
+  const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
+  const variants = {
+    default: 'bg-slate-100 text-slate-500',
+    pendente: 'bg-purple-900 text-white',
+    sorteada: 'bg-emerald-500 text-white',
+    destaque: 'bg-purple-600 text-white',
+  }
+  return (
+    <div className={`${sizeClass} ${variants[variant]} rounded-full flex items-center justify-center font-bold shadow-sm`}>
+      {String(numero).padStart(2, '0')}
+    </div>
+  )
+}
+
+function Card({ title, children, action }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-slate-700">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Skeleton({ className = '' }) {
+  return <div className={`animate-pulse bg-slate-100 rounded-lg ${className}`} />
+}
+
+function CardCiclo({ ciclo }) {
+  if (!ciclo) return <Skeleton className="h-64" />
+  const { dezenas_pendentes, dezenas_sorteadas, numero_ciclo_atual, concursos_no_ciclo } = ciclo
+  return (
+    <Card title="Ciclo das 25 Dezenas">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-xs bg-purple-100 text-purple-700 font-semibold px-2 py-1 rounded-full">
+          Ciclo #{numero_ciclo_atual}
+        </span>
+        <span className="text-xs text-slate-400">
+          {concursos_no_ciclo.length} sorteio{concursos_no_ciclo.length !== 1 ? 's' : ''} no ciclo
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-1.5">
+        {Array.from({ length: 25 }, (_, i) => i + 1).map((d) => (
+          <div key={d} className="flex justify-center">
+            <Ball
+              numero={d}
+              variant={dezenas_pendentes.includes(d) ? 'pendente' : 'sorteada'}
+              size="sm"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-4 mt-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-full bg-purple-900 inline-block" />
+          Pendentes ({dezenas_pendentes.length})
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
+          Saíram ({dezenas_sorteadas.length})
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+function CardParidade({ paridade }) {
+  if (!paridade) return <Skeleton className="h-64" />
+  const top6 = [...paridade]
+    .sort((a, b) => b.total_ocorrencias - a.total_ocorrencias)
+    .slice(0, 6)
+  const max = Math.max(...top6.map((p) => p.percentual), 1)
+
+  return (
+    <Card title="Atraso de Paridade (P/I)">
+      <div className="space-y-3">
+        {top6.map((p) => (
+          <div key={p.composicao}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="font-semibold text-slate-700">{p.composicao}</span>
+              <div className="flex gap-2 text-slate-400">
+                <span>{p.percentual}%</span>
+                <span
+                  className={`font-medium ${p.atraso_atual === 0 ? 'text-emerald-600' : p.atraso_atual > 5 ? 'text-red-500' : 'text-amber-500'}`}
+                >
+                  {p.atraso_atual === 0 ? 'Último' : `−${p.atraso_atual}`}
+                </span>
+              </div>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-purple-500 rounded-full transition-all"
+                style={{ width: `${(p.percentual / max) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function CardRepetidas({ repetidas }) {
+  if (!repetidas) return <Skeleton className="h-64" />
+  return (
+    <Card title="Dezenas Repetidas Consecutivas">
+      <div className="space-y-2">
+        {repetidas.map((r) => (
+          <div
+            key={r.quantidade_repetidas}
+            className={`flex items-center justify-between p-3 rounded-xl border ${
+              r.is_ouro
+                ? 'border-amber-200 bg-amber-50'
+                : 'border-slate-100 bg-slate-50'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-lg font-black ${r.is_ouro ? 'text-amber-500' : 'text-slate-400'}`}
+              >
+                {r.quantidade_repetidas}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">
+                  repetidas{' '}
+                  {r.is_ouro && (
+                    <span className="text-xs bg-amber-400 text-white px-1.5 py-0.5 rounded-full ml-1">
+                      Ouro
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-slate-400">{r.percentual}% dos sorteios</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p
+                className={`text-sm font-bold ${
+                  r.atraso_atual === 0
+                    ? 'text-emerald-600'
+                    : r.atraso_atual > 5
+                    ? 'text-red-500'
+                    : 'text-amber-500'
+                }`}
+              >
+                {r.atraso_atual === 0 ? 'Hoje' : `−${r.atraso_atual}`}
+              </p>
+              <p className="text-xs text-slate-400">atraso</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function CardUltimoSorteio({ sorteio }) {
+  if (!sorteio) return <Skeleton className="h-48" />
+  const data = new Date(sorteio.data_sorteio).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+  return (
+    <Card title="Último Sorteio">
+      <div className="mb-3">
+        <span className="text-2xl font-black text-purple-700">#{sorteio.numero_concurso}</span>
+        <p className="text-xs text-slate-400 mt-0.5">{data}</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {[...sorteio.dezenas].sort((a, b) => a - b).map((d) => (
+          <Ball key={d} numero={d} variant="destaque" size="sm" />
+        ))}
+      </div>
+      <div className="mt-3 flex gap-3 text-xs text-slate-500">
+        <span>{sorteio.total_pares}P / {sorteio.total_impares}I</span>
+        <span>•</span>
+        <span>{sorteio.repetidas_anterior} repetidas</span>
+      </div>
+    </Card>
+  )
+}
+
+export default function Dashboard() {
+  const [radar, setRadar] = useState(null)
+  const [ultimoSorteio, setUltimoSorteio] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [atualizando, setAtualizando] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const carregar = useCallback(async () => {
+    try {
+      const [radarRes, sorteiosRes] = await Promise.all([
+        analiseAPI.radar(),
+        sorteiosAPI.listar(0, 1),
+      ])
+      setRadar(radarRes.data)
+      setUltimoSorteio(sorteiosRes.data[0] ?? null)
+    } catch {
+      setMsg({ tipo: 'erro', texto: 'Erro ao carregar dados. Verifique o backend.' })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { carregar() }, [carregar])
+
+  async function atualizar() {
+    setAtualizando(true)
+    setMsg(null)
+    try {
+      const res = await sorteiosAPI.atualizar()
+      setMsg({ tipo: 'ok', texto: res.data.mensagem ?? 'Base atualizada!' })
+      await carregar()
+    } catch (err) {
+      setMsg({ tipo: 'erro', texto: err.response?.data?.detail ?? 'Erro ao atualizar.' })
+    } finally {
+      setAtualizando(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">Radar Estratégico</h2>
+          <p className="text-sm text-slate-400 mt-0.5">Análise do histórico para apostar com inteligência</p>
+        </div>
+        <button
+          onClick={atualizar}
+          disabled={atualizando}
+          className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {atualizando ? 'Atualizando…' : 'Atualizar Base'}
+        </button>
+      </div>
+
+      {msg && (
+        <div
+          className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
+            msg.tipo === 'ok'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
+        >
+          {msg.texto}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-64" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CardCiclo ciclo={radar?.ciclo} />
+          <CardUltimoSorteio sorteio={ultimoSorteio} />
+          <CardParidade paridade={radar?.paridade} />
+          <CardRepetidas repetidas={radar?.repetidas} />
+        </div>
+      )}
+    </div>
+  )
+}
