@@ -177,10 +177,15 @@ function CardUltimoSorteio({ sorteio }) {
           <Ball key={d} numero={d} variant="destaque" size="sm" />
         ))}
       </div>
-      <div className="mt-3 flex gap-3 text-xs text-slate-500">
+      <div className="mt-3 flex flex-wrap gap-1.5 text-xs text-slate-500">
         <span>{sorteio.total_pares}P / {sorteio.total_impares}I</span>
         <span>•</span>
-        <span>{sorteio.repetidas_anterior} repetidas</span>
+        <span>
+          {sorteio.dezenas_repetidas?.length ?? 0} repetidas do #{sorteio.numero_concurso_anterior ?? '?'}:{' '}
+          {sorteio.dezenas_repetidas?.length > 0
+            ? sorteio.dezenas_repetidas.map((d) => String(d).padStart(2, '0')).join(', ')
+            : '—'}
+        </span>
       </div>
     </Card>
   )
@@ -195,12 +200,12 @@ export default function Dashboard() {
 
   const carregar = useCallback(async () => {
     try {
-      const [radarRes, sorteiosRes] = await Promise.all([
+      const [radarRes, ultimoRes] = await Promise.all([
         analiseAPI.radar(),
-        sorteiosAPI.listar(0, 1),
+        sorteiosAPI.ultimo(),
       ])
       setRadar(radarRes.data)
-      setUltimoSorteio(sorteiosRes.data[0] ?? null)
+      setUltimoSorteio(ultimoRes.data ?? null)
     } catch {
       setMsg({ tipo: 'erro', texto: 'Erro ao carregar dados. Verifique o backend.' })
     } finally {

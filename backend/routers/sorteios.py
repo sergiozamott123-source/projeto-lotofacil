@@ -9,6 +9,7 @@ import models
 import schemas
 from services.scraper import buscar_e_salvar_ultimo_sorteio
 from services.importacao import importar_historico
+from services.analise import gerar_propostas, analisar_jogo
 
 router = APIRouter(prefix="/sorteios", tags=["sorteios"])
 
@@ -27,6 +28,42 @@ def atualizar_sorteios(db: Session = Depends(get_db)):
         raise HTTPException(status_code=502, detail=f"Erro ao consultar API da Caixa: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/proposta", response_model=schemas.SorteioProposta)
+def obter_proposta(db: Session = Depends(get_db)):
+    try:
+        return gerar_propostas(db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/analisar", response_model=schemas.AnalisarJogoResponse)
+def analisar_jogo_proprio(payload: schemas.AnalisarJogoRequest, db: Session = Depends(get_db)):
+    try:
+        return analisar_jogo(payload.dezenas, db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/ultimo", response_model=schemas.SorteioUltimoOut)
+def obter_ultimo_sorteio(db: Session = Depends(get_db)):
+    sorteios = (
+        db.query(models.Sorteio)
+        .order_by(models.Sorteio.numero_concurso.desc())
+        .limit(2)
+        .all()
+    )
+    if not sorteios:
+        raise HTTPException(status_code=404, detail="Nenhum sorteio encontrado")
+    ultimo = sorteios[0]
+    anterior = sorteios[1] if len(sorteios) > 1 else None
+    dezenas_repetidas = sorted(set(ultimo.dezenas) & set(anterior.dezenas)) if anterior else []
+    return schemas.SorteioUltimoOut(
+        **{c.key: getattr(ultimo, c.key) for c in ultimo.__table__.columns},
+        numero_concurso_anterior=anterior.numero_concurso if anterior else None,
+        dezenas_repetidas=dezenas_repetidas,
+    )
 
 
 @router.get("/{numero_concurso}", response_model=schemas.SorteioOut)

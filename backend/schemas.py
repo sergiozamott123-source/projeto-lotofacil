@@ -40,6 +40,11 @@ class SorteioOut(SorteioBase):
     model_config = {"from_attributes": True}
 
 
+class SorteioUltimoOut(SorteioOut):
+    numero_concurso_anterior: Optional[int] = None
+    dezenas_repetidas: List[int] = []
+
+
 # --- Aposta ---
 
 class ApostaBase(BaseModel):
@@ -91,6 +96,63 @@ class JogoRealizadoOut(JogoRealizadoBase):
     conferido_em: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Proposta de Apostas ---
+
+class PropostaJogo(BaseModel):
+    jogo: int
+    dezenas: List[int]
+    pares: int
+    impares: int
+    fibonacci: int
+    moldura: int
+    centro: int
+    primos: int
+    multiplos_3: int
+    repetidas_ultimo: int
+    soma: int
+    estrategia: str
+
+
+class SorteioProposta(BaseModel):
+    ciclo_atual: int
+    concursos_no_ciclo: int
+    ausentes_do_ciclo: List[int]
+    dezenas_fixas: List[int]
+    propostas: List[PropostaJogo]
+
+
+# --- Análise de jogo próprio ---
+
+class AnalisarJogoRequest(BaseModel):
+    dezenas: List[int]
+
+    @field_validator("dezenas")
+    @classmethod
+    def validar_dezenas(cls, v):
+        if len(v) != 15:
+            raise ValueError("Deve ter exatamente 15 dezenas")
+        if not all(1 <= d <= 25 for d in v):
+            raise ValueError("Dezenas devem estar entre 1 e 25")
+        if len(set(v)) != 15:
+            raise ValueError("Dezenas não podem se repetir")
+        return sorted(v)
+
+
+class AnalisarJogoResponse(BaseModel):
+    dezenas: List[int]
+    pares: int
+    impares: int
+    fibonacci: int
+    moldura: int
+    centro: int
+    primos: int
+    multiplos_3: int
+    repetidas_ultimo: int
+    soma: int
+    aprovado: bool
+    filtros_falhos: List[str]
 
 
 # --- Importação ---

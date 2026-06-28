@@ -7,9 +7,12 @@ const api = axios.create({
 
 export const sorteiosAPI = {
   listar: (skip = 0, limit = 50) => api.get(`/sorteios/?skip=${skip}&limit=${limit}`),
+  ultimo: () => api.get('/sorteios/ultimo'),
   obter: (numeroConcurso) => api.get(`/sorteios/${numeroConcurso}`),
   criar: (data) => api.post('/sorteios/', data),
   atualizar: () => api.get('/sorteios/atualizar'),
+  proposta: () => api.get('/sorteios/proposta'),
+  analisar: (dezenas) => api.post('/sorteios/analisar', { dezenas }),
 }
 
 export const analiseAPI = {
