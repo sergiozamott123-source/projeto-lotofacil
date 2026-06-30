@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 from database import engine, Base
-from routers import sorteios, apostas, jogos, analise, ia
+from routers import sorteios, apostas, jogos, analise, ia, whatsapp
 from scheduler import iniciar_scheduler, parar_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -52,3 +52,4 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+app.include_router(whatsapp.router, prefix="/api", tags=["whatsapp"])
