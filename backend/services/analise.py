@@ -10,7 +10,7 @@ CENTRO = {7, 8, 9, 12, 13, 14, 17, 18, 19}
 PRIMOS = {2, 3, 5, 7, 11, 13, 17, 19, 23}
 MULTIPLOS_3 = {3, 6, 9, 12, 15, 18, 21, 24}
 
-_PARIDADES_VALIDAS = frozenset({(8, 7), (7, 8), (9, 6), (6, 9)})  # (impares, pares)
+_PARIDADES_VALIDAS = frozenset({(8, 7), (7, 8), (9, 6), (6, 9)})
 
 
 def ciclo_atual(db: Session) -> dict:
@@ -88,7 +88,6 @@ def analise_repetidas(db: Session) -> list[dict]:
     if not sorteios:
         return []
 
-    # Exclude the oldest sorteio — it has no predecessor to compare against
     min_concurso = min(s.numero_concurso for s in sorteios)
 
     count: dict[int, int] = {}
@@ -136,7 +135,6 @@ def analise_frequencia(db: Session) -> list[dict]:
         freq_50 = sum(1 for s in sorteios[:50] if dezena in s.dezenas)
         freq_100 = sum(1 for s in sorteios if dezena in s.dezenas)
 
-        # Expected frequency in 10 sorteios = 10 * 15 / 25 = 6
         if freq_10 >= 7:
             classificacao = "quente"
         elif freq_10 <= 4:
@@ -174,7 +172,8 @@ def _calcular_stats(dezenas: list[int], ultimo_dezenas: list[int]) -> dict:
     }
 
 
-def _verificar_filtros(stats: dict, filtrar_repetidas: bool) -> list[str]:
+def _contar_filtros_aprovados(stats: dict, filtrar_repetidas: bool) -> tuple[int, list[str]]:
+    """Retorna (numero_filtros_aprovados, lista_de_filtros_falhos)"""
     falhos = []
     if not (3 <= stats["fibonacci"] <= 5):
         falhos.append(f"Fibonacci fora do range (3–5): {stats['fibonacci']}")
@@ -190,6 +189,26 @@ def _verificar_filtros(stats: dict, filtrar_repetidas: bool) -> list[str]:
         falhos.append(f"Soma fora do range (181–210): {stats['soma']}")
     if (stats["impares"], stats["pares"]) not in _PARIDADES_VALIDAS:
         falhos.append(f"Paridade inválida: {stats['impares']}I/{stats['pares']}P")
+
+    total_filtros = 7 if filtrar_repetidas else 6
+    aprovados = total_filtros - len(falhos)
+    return aprovados, falhos
+
+
+def _classificar_nivel(aprovados: int, total: int) -> str:
+    percentual = aprovados / total
+    if percentual == 1.0:
+        return "ouro"
+    elif percentual >= 0.71:  # 5 ou 6 de 7
+        return "prata"
+    elif percentual >= 0.43:  # 3 ou 4 de 7
+        return "bronze"
+    else:
+        return "reprovado"
+
+
+def _verificar_filtros(stats: dict, filtrar_repetidas: bool) -> list[str]:
+    _, falhos = _contar_filtros_aprovados(stats, filtrar_repetidas)
     return falhos
 
 
@@ -208,12 +227,17 @@ def analisar_jogo(dezenas: list[int], db: Session) -> dict:
     filtrar_repetidas = bool(ultimo_dezenas)
 
     stats = _calcular_stats(dezenas, ultimo_dezenas)
-    falhos = _verificar_filtros(stats, filtrar_repetidas)
+    aprovados, falhos = _contar_filtros_aprovados(stats, filtrar_repetidas)
+    total_filtros = 7 if filtrar_repetidas else 6
+    nivel = _classificar_nivel(aprovados, total_filtros)
 
     return {
         "dezenas": sorted(dezenas),
         **stats,
         "aprovado": len(falhos) == 0,
+        "nivel": nivel,
+        "filtros_aprovados": aprovados,
+        "total_filtros": total_filtros,
         "filtros_falhos": falhos,
     }
 
@@ -228,11 +252,11 @@ def gerar_propostas(db: Session) -> dict:
     )
     ultimo_dezenas = list(ultimo.dezenas) if ultimo else []
     filtrar_repetidas = bool(ultimo_dezenas)
+    total_filtros = 7 if filtrar_repetidas else 6
 
     num_concursos = len(ciclo["concursos_no_ciclo"])
     ausentes = ciclo["dezenas_pendentes"]
 
-    # Only fix ausentes when the cycle is mature and they fit within a jogo
     dezenas_fixas: list[int] = []
     if num_concursos >= 3 and len(ausentes) <= 15:
         dezenas_fixas = ausentes
@@ -240,11 +264,13 @@ def gerar_propostas(db: Session) -> dict:
     pool = [d for d in range(1, 26) if d not in dezenas_fixas]
     needed = 15 - len(dezenas_fixas)
 
-    aprovados: list[list[int]] = []
+    ouro: list[tuple] = []
+    prata: list[tuple] = []
+    bronze: list[tuple] = []
     vistos: set[frozenset] = set()
 
-    for _ in range(10_000):
-        if len(aprovados) == 3:
+    for _ in range(50_000):
+        if len(ouro) >= 2 and len(prata) >= 2 and len(bronze) >= 2:
             break
         complemento = random.sample(pool, needed)
         candidato = sorted(dezenas_fixas + complemento)
@@ -252,18 +278,39 @@ def gerar_propostas(db: Session) -> dict:
         if fs in vistos:
             continue
         vistos.add(fs)
-        if _passa_filtros(candidato, ultimo_dezenas, filtrar_repetidas):
-            aprovados.append(candidato)
 
-    propostas = []
-    for i, dezenas in enumerate(aprovados):
-        stats = _calcular_stats(dezenas, ultimo_dezenas)
-        propostas.append({
-            "jogo": i + 1,
-            "dezenas": dezenas,
-            **stats,
-            "estrategia": "Ciclo + 7 Filtros",
-        })
+        stats = _calcular_stats(candidato, ultimo_dezenas)
+        aprovados, falhos = _contar_filtros_aprovados(stats, filtrar_repetidas)
+        nivel = _classificar_nivel(aprovados, total_filtros)
+
+        if nivel == "ouro" and len(ouro) < 2:
+            ouro.append((candidato, stats, aprovados, falhos))
+        elif nivel == "prata" and len(prata) < 2:
+            prata.append((candidato, stats, aprovados, falhos))
+        elif nivel == "bronze" and len(bronze) < 2:
+            bronze.append((candidato, stats, aprovados, falhos))
+
+    def formatar(jogos, nivel_nome, emoji):
+        resultado = []
+        for i, (dezenas, stats, aprovados, falhos) in enumerate(jogos):
+            resultado.append({
+                "jogo": i + 1,
+                "dezenas": dezenas,
+                **stats,
+                "nivel": nivel_nome,
+                "emoji": emoji,
+                "filtros_aprovados": aprovados,
+                "total_filtros": total_filtros,
+                "filtros_falhos": falhos,
+                "estrategia": f"{emoji} {nivel_nome} — {aprovados}/{total_filtros} filtros",
+            })
+        return resultado
+
+    propostas = (
+        formatar(ouro, "Ouro", "🥇") +
+        formatar(prata, "Prata", "🥈") +
+        formatar(bronze, "Bronze", "🥉")
+    )
 
     return {
         "ciclo_atual": ciclo["numero_ciclo_atual"],
@@ -271,4 +318,9 @@ def gerar_propostas(db: Session) -> dict:
         "ausentes_do_ciclo": ausentes,
         "dezenas_fixas": dezenas_fixas,
         "propostas": propostas,
+        "resumo": {
+            "ouro": len(ouro),
+            "prata": len(prata),
+            "bronze": len(bronze),
+        }
     }
