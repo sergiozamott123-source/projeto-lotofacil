@@ -13,6 +13,12 @@ MULTIPLOS_3 = {3, 6, 9, 12, 15, 18, 21, 24}
 _PARIDADES_VALIDAS = frozenset({(8, 7), (7, 8), (9, 6), (6, 9)})
 
 
+def carregar_combinacoes_historicas(db: Session) -> dict[frozenset, int]:
+    """Retorna um dicionário {combinação: numero_concurso} de tudo que já foi sorteado."""
+    sorteios = db.query(models.Sorteio.numero_concurso, models.Sorteio.dezenas).all()
+    return {frozenset(dezenas): numero for numero, dezenas in sorteios}
+
+
 def ciclo_atual(db: Session) -> dict:
     sorteios = (
         db.query(models.Sorteio)
@@ -231,6 +237,11 @@ def analisar_jogo(dezenas: list[int], db: Session) -> dict:
     total_filtros = 7 if filtrar_repetidas else 6
     nivel = _classificar_nivel(aprovados, total_filtros)
 
+    # Verifica se essa combinação exata já foi sorteada alguma vez
+    combinacoes_historicas = carregar_combinacoes_historicas(db)
+    concurso_repetido = combinacoes_historicas.get(frozenset(dezenas))
+    ja_sorteado = concurso_repetido is not None
+
     return {
         "dezenas": sorted(dezenas),
         **stats,
@@ -239,6 +250,8 @@ def analisar_jogo(dezenas: list[int], db: Session) -> dict:
         "filtros_aprovados": aprovados,
         "total_filtros": total_filtros,
         "filtros_falhos": falhos,
+        "ja_sorteado": ja_sorteado,
+        "concurso_repetido": concurso_repetido,
     }
 
 
@@ -254,6 +267,9 @@ def gerar_propostas(db: Session) -> dict:
     filtrar_repetidas = bool(ultimo_dezenas)
     total_filtros = 7 if filtrar_repetidas else 6
 
+    # Carrega todas as combinações já sorteadas na história, pra garantir jogos inéditos
+    combinacoes_historicas = carregar_combinacoes_historicas(db)
+
     num_concursos = len(ciclo["concursos_no_ciclo"])
     ausentes = ciclo["dezenas_pendentes"]
 
@@ -268,6 +284,7 @@ def gerar_propostas(db: Session) -> dict:
     prata: list[tuple] = []
     bronze: list[tuple] = []
     vistos: set[frozenset] = set()
+    descartados_por_ja_sorteado = 0
 
     for _ in range(50_000):
         if len(ouro) >= 2 and len(prata) >= 2 and len(bronze) >= 2:
@@ -278,6 +295,11 @@ def gerar_propostas(db: Session) -> dict:
         if fs in vistos:
             continue
         vistos.add(fs)
+
+        # Descarta se essa combinação já saiu alguma vez na história da Lotofácil
+        if fs in combinacoes_historicas:
+            descartados_por_ja_sorteado += 1
+            continue
 
         stats = _calcular_stats(candidato, ultimo_dezenas)
         aprovados, falhos = _contar_filtros_aprovados(stats, filtrar_repetidas)
@@ -303,6 +325,7 @@ def gerar_propostas(db: Session) -> dict:
                 "total_filtros": total_filtros,
                 "filtros_falhos": falhos,
                 "estrategia": f"{emoji} {nivel_nome} — {aprovados}/{total_filtros} filtros",
+                "inedito": True,
             })
         return resultado
 
@@ -322,5 +345,6 @@ def gerar_propostas(db: Session) -> dict:
             "ouro": len(ouro),
             "prata": len(prata),
             "bronze": len(bronze),
-        }
+        },
+        "jogos_ja_sorteados_descartados": descartados_por_ja_sorteado,
     }
