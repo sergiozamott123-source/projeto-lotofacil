@@ -1,0 +1,18 @@
+{
+  "name": "Lotofácil IA",
+  "short_name": "LotoIA",
+  "description": "Análise estatística e apostas da Lotofácil com IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#4C1D95",
+  "theme_color": "#6D28D9",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
