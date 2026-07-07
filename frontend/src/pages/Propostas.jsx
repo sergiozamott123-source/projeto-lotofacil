@@ -60,12 +60,8 @@ function CardProposta({ proposta, salvo }) {
       </div>
 
       <div className="grid grid-cols-3 gap-1.5">
-        <StatBadge label="Fibonacci" value={proposta.fibonacci} />
         <StatBadge label="Moldura" value={proposta.moldura} />
         <StatBadge label="Centro" value={proposta.centro} />
-        <StatBadge label="Primos" value={proposta.primos} />
-        <StatBadge label="Múlt. 3" value={proposta.multiplos_3} />
-        <StatBadge label="Soma" value={proposta.soma} />
         <StatBadge label="Repetidas" value={proposta.repetidas_ultimo} />
         <StatBadge label="Paridade" value={`${proposta.impares}I / ${proposta.pares}P`} />
       </div>
@@ -82,7 +78,7 @@ function CardJogoAnalise({ analise }) {
         </span>
         {analise.aprovado ? (
           <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-            ✓ Aprovado nos 7 filtros
+            ✓ Aprovado nos 3 filtros
           </span>
         ) : (
           <div className="flex flex-wrap gap-1.5 justify-end">
@@ -105,12 +101,8 @@ function CardJogoAnalise({ analise }) {
       </div>
 
       <div className="grid grid-cols-3 gap-1.5">
-        <StatBadge label="Fibonacci" value={analise.fibonacci} />
         <StatBadge label="Moldura" value={analise.moldura} />
         <StatBadge label="Centro" value={analise.centro} />
-        <StatBadge label="Primos" value={analise.primos} />
-        <StatBadge label="Múlt. 3" value={analise.multiplos_3} />
-        <StatBadge label="Soma" value={analise.soma} />
         <StatBadge label="Repetidas" value={analise.repetidas_ultimo} />
         <StatBadge label="Paridade" value={`${analise.impares}I / ${analise.pares}P`} />
       </div>
@@ -214,7 +206,7 @@ export default function Propostas() {
         <div>
           <h2 className="text-2xl font-black text-slate-800">Propostas Estatísticas</h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Jogos gerados pelo funil de 7 filtros combinado com o ciclo das 25 dezenas
+            Jogos gerados pelo funil de 3 filtros combinado com o ciclo das 25 dezenas
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -292,7 +284,7 @@ export default function Propostas() {
       {loading ? (
         <div className="text-center py-16 text-slate-400">
           <div className="inline-block w-8 h-8 border-4 border-purple-200 border-t-purple-700 rounded-full animate-spin mb-3" />
-          <p className="text-sm">Aplicando funil de 7 filtros…</p>
+          <p className="text-sm">Aplicando funil de 3 filtros…</p>
         </div>
       ) : dados && (
         <>
@@ -335,7 +327,7 @@ export default function Propostas() {
 
           {dados.propostas.length === 0 ? (
             <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100">
-              <p className="text-sm">Nenhum jogo passou pelos 7 filtros nesta rodada.</p>
+              <p className="text-sm">Nenhum jogo passou pelos 3 filtros nesta rodada.</p>
               <p className="text-xs mt-1">Clique em "Gerar novos" para tentar novamente.</p>
             </div>
           ) : (

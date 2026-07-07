@@ -105,13 +105,9 @@ class PropostaJogo(BaseModel):
     dezenas: List[int]
     pares: int
     impares: int
-    fibonacci: int
     moldura: int
     centro: int
-    primos: int
-    multiplos_3: int
     repetidas_ultimo: int
-    soma: int
     estrategia: str
 
 
@@ -144,13 +140,9 @@ class AnalisarJogoResponse(BaseModel):
     dezenas: List[int]
     pares: int
     impares: int
-    fibonacci: int
     moldura: int
     centro: int
-    primos: int
-    multiplos_3: int
     repetidas_ultimo: int
-    soma: int
     aprovado: bool
     filtros_falhos: List[str]
 
