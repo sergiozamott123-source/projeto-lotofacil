@@ -1,5 +1,6 @@
 # Sistema Lotofácil com IA
 
+
 Aplicação web full-stack para análise e geração de apostas da Lotofácil utilizando Inteligência Artificial (Anthropic Claude).
 
 ## Stack
