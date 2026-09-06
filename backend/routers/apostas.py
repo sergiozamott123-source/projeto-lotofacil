@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from database import get_db
 import models
 import schemas
-from services.conferencia import conferir_pendentes, FAIXAS_PREMIO
+from services.conferencia import conferir_pendentes, conferir_pendentes_e_notificar, FAIXAS_PREMIO
 
 router = APIRouter(prefix="/apostas", tags=["apostas"])
 
@@ -133,6 +133,36 @@ def conferir_todas_apostas(db: Session = Depends(get_db)):
     já que o usuário está conferindo ativamente, na hora.
     """
     resultados = conferir_pendentes(db)
+
+    detalhes = [
+        ConferirResult(
+            aposta_id=r.aposta_id,
+            numero_concurso=r.numero_concurso,
+            dezenas_apostadas=r.dezenas_apostadas,
+            dezenas_sorteadas=r.dezenas_sorteadas,
+            dezenas_acertadas=r.dezenas_acertadas,
+            total_acertos=r.total_acertos,
+            premiado=r.premiado,
+            faixa_premio=r.faixa_premio,
+        )
+        for r in resultados
+    ]
+
+    return ConferirTodasResult(
+        total_conferidas=len(detalhes),
+        total_premiadas=sum(1 for d in detalhes if d.premiado),
+        detalhes=detalhes,
+    )
+
+
+@router.post("/conferir-e-notificar", response_model=ConferirTodasResult)
+def conferir_todas_e_notificar(db: Session = Depends(get_db)):
+    """
+    Igual ao /conferir-todas, mas dispara o e-mail de aviso mesmo sem uma
+    atualizacao automatica de sorteio ter acontecido. Util para testar o
+    envio de e-mail, ou para reenviar o aviso manualmente se precisar.
+    """
+    resultados = conferir_pendentes_e_notificar(db)
 
     detalhes = [
         ConferirResult(
