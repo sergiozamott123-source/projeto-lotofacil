@@ -27,6 +27,10 @@ export const iaAPI = {
   gerarJogos: (data) => api.post('/ia/gerar-jogos', data),
 }
 
+export const motorAPI = {
+  gerar: (data) => api.post('/motor/gerar', data),
+}
+
 export const apostasAPI = {
   listar: () => api.get('/apostas/'),
   obter: (id) => api.get(`/apostas/${id}`),

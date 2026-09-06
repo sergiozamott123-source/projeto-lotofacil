@@ -19,6 +19,7 @@ class GerarJogosFlexRequest(BaseModel):
     usar_ciclo: bool = True
     evitar_ja_sorteados: bool = True
     salvar: bool = False
+    concurso_alvo: Optional[int] = None
 
     @field_validator("n_jogos")
     @classmethod
@@ -65,6 +66,7 @@ def endpoint_gerar_jogos_flex(
             aposta = models.Aposta(
                 nome=f"MOTOR-{i:02d}-{jogo['repetidas_concurso_anterior']}R-{jogo['pares']}P{jogo['impares']}I",
                 dezenas=jogo["dezenas"],
+                numero_concurso_alvo=request.concurso_alvo,
                 origem=models.OrigemEnum.ia,
             )
             db.add(aposta)
