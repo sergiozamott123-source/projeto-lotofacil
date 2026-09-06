@@ -119,6 +119,13 @@ def _detectar_delimitador(amostra: str) -> str:
         return ","
 
 
+def _linha_e_cabecalho(row: tuple) -> bool:
+    """Identifica a linha real de cabecalhos, mesmo com texto explicativo antes
+    (comum em planilhas baixadas de sites como asloterias.com.br)."""
+    norm_cells = {_normalizar_header(str(c)) for c in row if c is not None}
+    return "concurso" in norm_cells
+
+
 def _ler_xlsx(conteudo: bytes) -> tuple[list[str], list[dict]]:
     wb = openpyxl.load_workbook(io.BytesIO(conteudo), read_only=True, data_only=True)
     sheet_names_upper = [s.upper() for s in wb.sheetnames]
@@ -134,9 +141,16 @@ def _ler_xlsx(conteudo: bytes) -> tuple[list[str], list[dict]]:
     wb.close()
     if not rows:
         return [], []
-    headers = [str(c) if c is not None else "" for c in rows[0]]
+
+    header_idx = 0
+    for i, row in enumerate(rows[:30]):
+        if any(c is not None for c in row) and _linha_e_cabecalho(row):
+            header_idx = i
+            break
+
+    headers = [str(c) if c is not None else "" for c in rows[header_idx]]
     data = []
-    for row in rows[1:]:
+    for row in rows[header_idx + 1:]:
         if all(c is None for c in row):
             continue
         data.append(dict(zip(headers, row)))
