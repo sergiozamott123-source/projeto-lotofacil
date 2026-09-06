@@ -95,7 +95,7 @@ export default function JogarManual() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-black text-slate-800">Minha Aposta</h2>
+        <h2 className="text-2xl font-black text-slate-800">Jogo Manual</h2>
         <p className="text-sm text-slate-400 mt-0.5">Selecione 15 dezenas para montar seu jogo</p>
       </div>
 

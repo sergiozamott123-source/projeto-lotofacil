@@ -6,7 +6,7 @@ const navItems = [
   { to: '/propostas', label: 'Propostas' },
   { to: '/gerar-ia', label: 'Gerar com IA' },
   { to: '/motor', label: 'Motor Estatístico' },
-  { to: '/jogar-manual', label: 'Minha Aposta' },
+  { to: '/jogar-manual', label: 'Jogo Manual' },
   { to: '/apostas', label: 'Minhas Apostas' },
 ]
 
