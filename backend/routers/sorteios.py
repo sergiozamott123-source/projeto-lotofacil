@@ -7,7 +7,7 @@ from typing import List
 from database import get_db
 import models
 import schemas
-from services.scraper import buscar_e_salvar_ultimo_sorteio
+from services.atualizacao import executar_atualizacao_e_conferencia
 from services.importacao import importar_historico
 from services.analise import gerar_propostas, analisar_jogo
 
@@ -21,8 +21,16 @@ def listar_sorteios(skip: int = 0, limit: int = 50, db: Session = Depends(get_db
 
 @router.get("/atualizar")
 def atualizar_sorteios(db: Session = Depends(get_db)):
+    """
+    Busca o resultado mais recente, salva no banco e — se for um concurso
+    novo — confere sozinho todas as apostas pendentes e envia o e-mail de
+    aviso. É este endpoint que o GitHub Actions chama todo dia (ver
+    .github/workflows/atualizar-sorteios.yml), já que no plano gratuito o
+    backend pode estar "dormindo" e o agendador interno sozinho não é
+    suficiente.
+    """
     try:
-        resultado = buscar_e_salvar_ultimo_sorteio(db)
+        resultado = executar_atualizacao_e_conferencia(db)
         return resultado
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao consultar API da Caixa: {exc}")

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 from database import engine, Base
-from routers import sorteios, apostas, jogos, analise, ia, whatsapp
+from routers import sorteios, apostas, jogos, analise, ia, whatsapp, motor
 from scheduler import iniciar_scheduler, parar_scheduler
 Base.metadata.create_all(bind=engine)
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(apostas.router, prefix="/api")
 app.include_router(jogos.router, prefix="/api")
 app.include_router(analise.router, prefix="/api")
 app.include_router(ia.router, prefix="/api")
+app.include_router(motor.router, prefix="/api")
 app.include_router(whatsapp.router, prefix="/api", tags=["whatsapp"])
 @app.get("/")
 def root():

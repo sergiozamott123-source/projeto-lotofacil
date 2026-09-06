@@ -1,0 +1,19 @@
+name: Atualizar sorteios da Lotofácil
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de atualização do backend
+        run: |
+          if [ -z "${{ secrets.BACKEND_URL }}" ]; then
+            echo "Configure o secret BACKEND_URL no repositório (Settings > Secrets and variables > Actions) com a URL do backend no Render, ex.: https://projeto-lotofacil.onrender.com"
+            exit 1
+          fi
+          curl --fail --show-error --max-time 90 "${{ secrets.BACKEND_URL }}/api/sorteios/atualizar"

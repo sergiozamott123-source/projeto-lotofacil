@@ -7,16 +7,9 @@ from pydantic import BaseModel
 from database import get_db
 import models
 import schemas
+from services.conferencia import conferir_pendentes, FAIXAS_PREMIO
 
 router = APIRouter(prefix="/apostas", tags=["apostas"])
-
-FAIXAS_PREMIO = {
-    11: "quadra",
-    12: "quina",
-    13: "sena",
-    14: "quatorze",
-    15: "sena máxima",
-}
 
 
 class ConferirResult(BaseModel):
@@ -133,49 +126,27 @@ def criar_aposta(aposta: schemas.ApostaCreate, db: Session = Depends(get_db)):
 # POST /conferir-todas deve vir antes de POST /{aposta_id}/conferir
 @router.post("/conferir-todas", response_model=ConferirTodasResult)
 def conferir_todas_apostas(db: Session = Depends(get_db)):
-    apostas_ja_conferidas = db.query(models.JogoRealizado.aposta_id).subquery()
-    apostas_pendentes = (
-        db.query(models.Aposta)
-        .filter(
-            models.Aposta.id.notin_(apostas_ja_conferidas),
-            models.Aposta.numero_concurso_alvo.isnot(None),
+    """
+    Conferência manual, sob demanda (o botão "conferir agora" do painel).
+    Usa a MESMA lógica que roda sozinha após cada atualização automática
+    (services/conferencia.py) — a diferença é que aqui não dispara e-mail,
+    já que o usuário está conferindo ativamente, na hora.
+    """
+    resultados = conferir_pendentes(db)
+
+    detalhes = [
+        ConferirResult(
+            aposta_id=r.aposta_id,
+            numero_concurso=r.numero_concurso,
+            dezenas_apostadas=r.dezenas_apostadas,
+            dezenas_sorteadas=r.dezenas_sorteadas,
+            dezenas_acertadas=r.dezenas_acertadas,
+            total_acertos=r.total_acertos,
+            premiado=r.premiado,
+            faixa_premio=r.faixa_premio,
         )
-        .all()
-    )
-
-    detalhes: List[ConferirResult] = []
-    for aposta in apostas_pendentes:
-        sorteio = db.query(models.Sorteio).filter(
-            models.Sorteio.numero_concurso == aposta.numero_concurso_alvo
-        ).first()
-        if not sorteio:
-            continue
-
-        acertadas = sorted(set(aposta.dezenas) & set(sorteio.dezenas))
-        total = len(acertadas)
-        premiado = total >= 11
-        faixa = FAIXAS_PREMIO.get(total) if premiado else None
-
-        db.add(models.JogoRealizado(
-            aposta_id=aposta.id,
-            numero_concurso=sorteio.numero_concurso,
-            dezenas_acertadas=acertadas,
-            total_acertos=total,
-            premiado=premiado,
-            faixa_premio=faixa,
-        ))
-        detalhes.append(ConferirResult(
-            aposta_id=aposta.id,
-            numero_concurso=sorteio.numero_concurso,
-            dezenas_apostadas=aposta.dezenas,
-            dezenas_sorteadas=sorteio.dezenas,
-            dezenas_acertadas=acertadas,
-            total_acertos=total,
-            premiado=premiado,
-            faixa_premio=faixa,
-        ))
-
-    db.commit()
+        for r in resultados
+    ]
 
     return ConferirTodasResult(
         total_conferidas=len(detalhes),
