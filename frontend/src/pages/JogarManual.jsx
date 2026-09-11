@@ -49,7 +49,7 @@ export default function JogarManual() {
       const next = new Set(prev)
       if (next.has(d)) {
         next.delete(d)
-      } else if (next.size < 15) {
+      } else if (next.size < 20) {
         next.add(d)
       }
       return next
@@ -62,8 +62,8 @@ export default function JogarManual() {
   const impares = dezenasSorted.length - pares
 
   async function salvar() {
-    if (dezenasSorted.length !== 15) {
-      setMsg({ tipo: 'erro', texto: 'Selecione exatamente 15 dezenas.' })
+    if (dezenasSorted.length < 15) {
+      setMsg({ tipo: 'erro', texto: 'Selecione pelo menos 15 dezenas.' })
       return
     }
     if (!nome.trim()) {
@@ -96,7 +96,7 @@ export default function JogarManual() {
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-black text-slate-800">Jogo Manual</h2>
-        <p className="text-sm text-slate-400 mt-0.5">Selecione 15 dezenas para montar seu jogo</p>
+        <p className="text-sm text-slate-400 mt-0.5">Selecione de 15 a 20 dezenas para montar seu jogo (apostas com mais de 15 são apostas especiais)</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -144,15 +144,15 @@ export default function JogarManual() {
                 </span>
               </div>
               <span
-                className={`text-sm font-bold ${progresso === 15 ? 'text-emerald-600' : 'text-slate-400'}`}
+                className={`text-sm font-bold ${progresso >= 15 ? 'text-emerald-600' : 'text-slate-400'}`}
               >
-                {progresso}/15 selecionadas
+                {progresso}/20 selecionadas {progresso >= 15 ? '' : `(mín. 15)`}
               </span>
             </div>
             <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${progresso === 15 ? 'bg-emerald-500' : 'bg-purple-500'}`}
-                style={{ width: `${(progresso / 15) * 100}%` }}
+                className={`h-full rounded-full transition-all ${progresso >= 15 ? 'bg-emerald-500' : 'bg-purple-500'}`}
+                style={{ width: `${(progresso / 20) * 100}%` }}
               />
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function JogarManual() {
 
             <button
               onClick={salvar}
-              disabled={salvando || progresso !== 15}
+              disabled={salvando || progresso < 15}
               className="mt-4 w-full py-3 bg-purple-700 hover:bg-purple-600 text-white font-bold rounded-xl shadow transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {salvando ? 'Salvando…' : 'Salvar Aposta'}

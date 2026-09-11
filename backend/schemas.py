@@ -39,11 +39,11 @@ class ApostaBase(BaseModel):
     @field_validator("dezenas")
     @classmethod
     def validar_dezenas(cls, v):
-        if len(v) != 15:
-            raise ValueError("Uma aposta deve ter exatamente 15 dezenas")
+        if not (15 <= len(v) <= 20):
+            raise ValueError("Uma aposta deve ter entre 15 e 20 dezenas (apostas especiais da Lotofácil vão até 20)")
         if not all(1 <= d <= 25 for d in v):
             raise ValueError("Dezenas devem estar entre 1 e 25")
-        if len(set(v)) != 15:
+        if len(set(v)) != len(v):
             raise ValueError("Dezenas não podem se repetir")
         return sorted(v)
 class ApostaCreate(ApostaBase):
