@@ -1,4 +1,7 @@
+import io
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -8,6 +11,7 @@ from database import get_db
 import models
 import schemas
 from services.conferencia import conferir_pendentes, conferir_pendentes_e_notificar, FAIXAS_PREMIO
+from services.exportacao import gerar_pdf_apostas
 
 router = APIRouter(prefix="/apostas", tags=["apostas"])
 
@@ -104,6 +108,33 @@ def resumo_apostas(db: Session = Depends(get_db)):
 @router.get("/", response_model=List[schemas.ApostaOut])
 def listar_apostas(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     return db.query(models.Aposta).order_by(models.Aposta.created_at.desc()).offset(skip).limit(limit).all()
+
+
+# GET /exportar-pdf deve vir antes de GET /{aposta_id} para evitar ambiguidade
+@router.get("/exportar-pdf")
+def exportar_apostas_pdf(numero_concurso_alvo: Optional[int] = None, db: Session = Depends(get_db)):
+    """Gera um PDF com a lista de apostas (todas, ou filtradas por concurso
+    alvo) para o usuário imprimir ou levar até a lotérica."""
+    query = db.query(models.Aposta)
+    if numero_concurso_alvo is not None:
+        query = query.filter(models.Aposta.numero_concurso_alvo == numero_concurso_alvo)
+    apostas = query.order_by(models.Aposta.created_at.desc()).all()
+
+    if not apostas:
+        raise HTTPException(status_code=404, detail="Nenhuma aposta encontrada para exportar")
+
+    pdf_bytes = gerar_pdf_apostas(apostas, numero_concurso_alvo)
+
+    nome_arquivo = (
+        f"lotofacil-jogos-concurso-{numero_concurso_alvo}.pdf"
+        if numero_concurso_alvo
+        else "lotofacil-meus-jogos.pdf"
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
 
 
 @router.get("/{aposta_id}", response_model=schemas.ApostaOut)

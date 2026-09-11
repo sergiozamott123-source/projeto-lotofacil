@@ -144,6 +144,8 @@ export default function Apostas() {
   const [conferindoId, setConferindoId] = useState(null)
   const [conferindoTodas, setConferindoTodas] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [filtroConcurso, setFiltroConcurso] = useState('')
+  const [exportando, setExportando] = useState(false)
 
   const carregar = useCallback(async () => {
     try {
@@ -208,7 +210,39 @@ export default function Apostas() {
     }
   }
 
+  async function exportarPdf() {
+    setExportando(true)
+    setMsg(null)
+    try {
+      const res = await apostasAPI.exportarPdf(filtroConcurso || null)
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const nomeArquivo = filtroConcurso
+        ? `lotofacil-jogos-concurso-${filtroConcurso}.pdf`
+        : 'lotofacil-meus-jogos.pdf'
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', nomeArquivo)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setMsg({
+        tipo: 'erro',
+        texto:
+          err.response?.status === 404
+            ? 'Nenhuma aposta encontrada para esse filtro.'
+            : 'Erro ao gerar o PDF.',
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
+
   const pendentes = apostas.filter((a) => !jogosPorAposta[a.id])
+  const apostasFiltradas = filtroConcurso
+    ? apostas.filter((a) => String(a.numero_concurso_alvo) === filtroConcurso)
+    : apostas
 
   return (
     <div>
@@ -230,6 +264,23 @@ export default function Apostas() {
 
       <CardResumo resumo={resumo} />
 
+      <div className="flex flex-wrap items-center gap-2 mb-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-3">
+        <input
+          type="number"
+          value={filtroConcurso}
+          onChange={(e) => setFiltroConcurso(e.target.value)}
+          placeholder="Filtrar por concurso (opcional)"
+          className="flex-1 min-w-[180px] px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+        />
+        <button
+          onClick={exportarPdf}
+          disabled={exportando || apostas.length === 0}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-40"
+        >
+          {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
+        </button>
+      </div>
+
       {msg && (
         <div
           className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
@@ -248,11 +299,16 @@ export default function Apostas() {
         <div className="text-center py-16 text-slate-400">
           <p className="text-4xl mb-3">🎯</p>
           <p className="font-semibold">Nenhuma aposta cadastrada ainda.</p>
-          <p className="text-sm mt-1">Use "Minha Aposta" ou "Gerar com IA" para começar.</p>
+          <p className="text-sm mt-1">Use "Jogo Manual" ou "Gerar com IA" para começar.</p>
+        </div>
+      ) : apostasFiltradas.length === 0 ? (
+        <div className="text-center py-16 text-slate-400">
+          <p className="text-4xl mb-3">🔍</p>
+          <p className="font-semibold">Nenhuma aposta para o concurso {filtroConcurso}.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {apostas.map((aposta) => (
+          {apostasFiltradas.map((aposta) => (
             <CardAposta
               key={aposta.id}
               aposta={aposta}
