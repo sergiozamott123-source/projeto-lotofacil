@@ -7,7 +7,7 @@ from typing import List
 from database import get_db
 import models
 import schemas
-from services.atualizacao import executar_atualizacao_e_conferencia
+from services.atualizacao import executar_atualizacao_e_conferencia, registrar_sorteio_manual
 from services.importacao import importar_historico
 from services.analise import gerar_propostas, analisar_jogo
 
@@ -34,6 +34,20 @@ def atualizar_sorteios(db: Session = Depends(get_db)):
         return resultado
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao consultar API da Caixa: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/registrar-manual")
+def registrar_sorteio_manual_endpoint(payload: schemas.SorteioManualCreate, db: Session = Depends(get_db)):
+    """
+    Cadastra manualmente o resultado de um concurso — usado quando 'Atualizar
+    Base' não consegue buscar sozinho (ex.: bloqueio da Caixa para
+    servidores fora do Brasil). Segue o mesmo fluxo do automático: se for
+    concurso novo, já confere as apostas pendentes e envia o e-mail.
+    """
+    try:
+        return registrar_sorteio_manual(db, payload.numero_concurso, payload.data_sorteio, payload.dezenas)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

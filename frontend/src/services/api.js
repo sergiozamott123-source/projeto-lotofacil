@@ -11,6 +11,7 @@ export const sorteiosAPI = {
   obter: (numeroConcurso) => api.get(`/sorteios/${numeroConcurso}`),
   criar: (data) => api.post('/sorteios/', data),
   atualizar: () => api.get('/sorteios/atualizar'),
+  registrarManual: (data) => api.post('/sorteios/registrar-manual', data),
   proposta: () => api.get('/sorteios/proposta'),
   analisar: (dezenas) => api.post('/sorteios/analisar', { dezenas }),
 }

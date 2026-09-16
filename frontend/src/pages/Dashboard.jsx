@@ -197,6 +197,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [atualizando, setAtualizando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [mostrarManual, setMostrarManual] = useState(false)
+  const [concursoManual, setConcursoManual] = useState('')
+  const [dataManual, setDataManual] = useState('')
+  const [dezenasManual, setDezenasManual] = useState(new Set())
+  const [salvandoManual, setSalvandoManual] = useState(false)
 
   const carregar = useCallback(async () => {
     try {
@@ -229,6 +234,56 @@ export default function Dashboard() {
     }
   }
 
+  function toggleDezenaManual(d) {
+    setDezenasManual((prev) => {
+      const next = new Set(prev)
+      if (next.has(d)) {
+        next.delete(d)
+      } else if (next.size < 15) {
+        next.add(d)
+      }
+      return next
+    })
+  }
+
+  async function registrarManual() {
+    const dezenasArr = [...dezenasManual].sort((a, b) => a - b)
+    if (dezenasArr.length !== 15) {
+      setMsg({ tipo: 'erro', texto: 'Selecione exatamente 15 dezenas.' })
+      return
+    }
+    if (!concursoManual || !dataManual) {
+      setMsg({ tipo: 'erro', texto: 'Informe o número do concurso e a data do sorteio.' })
+      return
+    }
+    setSalvandoManual(true)
+    setMsg(null)
+    try {
+      const res = await sorteiosAPI.registrarManual({
+        numero_concurso: parseInt(concursoManual),
+        data_sorteio: dataManual,
+        dezenas: dezenasArr,
+      })
+      const conferidas = res.data.apostas_conferidas_automaticamente ?? 0
+      setMsg({
+        tipo: res.data.status === 'ja_existe' ? 'erro' : 'ok',
+        texto:
+          res.data.status === 'ja_existe'
+            ? `O concurso ${concursoManual} já estava cadastrado.`
+            : `Concurso ${concursoManual} cadastrado! ${conferidas} aposta${conferidas !== 1 ? 's' : ''} conferida${conferidas !== 1 ? 's' : ''} automaticamente.`,
+      })
+      setConcursoManual('')
+      setDataManual('')
+      setDezenasManual(new Set())
+      setMostrarManual(false)
+      await carregar()
+    } catch (err) {
+      setMsg({ tipo: 'erro', texto: err.response?.data?.detail ?? 'Erro ao cadastrar o sorteio.' })
+    } finally {
+      setSalvandoManual(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -243,6 +298,78 @@ export default function Dashboard() {
         >
           {atualizando ? 'Atualizando…' : 'Atualizar Base'}
         </button>
+      </div>
+
+      <div className="mb-4">
+        <button
+          onClick={() => setMostrarManual((v) => !v)}
+          className="text-xs text-slate-400 hover:text-slate-600 underline-offset-2 hover:underline"
+        >
+          {mostrarManual
+            ? 'Cancelar cadastro manual'
+            : 'A Caixa já divulgou um resultado novo e o sistema não pegou? Cadastre manualmente'}
+        </button>
+
+        {mostrarManual && (
+          <div className="mt-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-semibold text-slate-700 mb-1">Cadastrar resultado manualmente</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              Use quando "Atualizar Base" não conseguir buscar sozinho. Confira os números no site oficial da Caixa antes de salvar.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                  Número do concurso
+                </label>
+                <input
+                  type="number"
+                  value={concursoManual}
+                  onChange={(e) => setConcursoManual(e.target.value)}
+                  placeholder="Ex: 3780"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                  Data do sorteio
+                </label>
+                <input
+                  type="date"
+                  value={dataManual}
+                  onChange={(e) => setDataManual(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+              </div>
+            </div>
+
+            <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
+              Dezenas sorteadas ({dezenasManual.size}/15)
+            </label>
+            <div className="grid grid-cols-5 sm:grid-cols-8 gap-2 mb-4">
+              {Array.from({ length: 25 }, (_, i) => i + 1).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => toggleDezenaManual(d)}
+                  className={`w-10 h-10 rounded-full text-sm font-bold transition-all ${
+                    dezenasManual.has(d)
+                      ? 'bg-purple-700 text-white ring-2 ring-purple-400 scale-105'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  }`}
+                >
+                  {String(d).padStart(2, '0')}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={registrarManual}
+              disabled={salvandoManual || dezenasManual.size !== 15}
+              className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {salvandoManual ? 'Salvando…' : 'Salvar resultado'}
+            </button>
+          </div>
+        )}
       </div>
 
       {msg && (
