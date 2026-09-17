@@ -3,7 +3,7 @@ import { analiseAPI, sorteiosAPI, apostasAPI } from '../services/api'
 
 const DEZENAS = Array.from({ length: 25 }, (_, i) => i + 1)
 
-function classeDezena(d, ultimoSorteio, pendentesNoCiclo, selecionadas) {
+function classeDezena(d, ultimoSorteio, pendentesNoCiclo, selecionadas, sugerida) {
   const noUltimo = ultimoSorteio?.includes(d)
   const pendente = pendentesNoCiclo?.includes(d)
   const sel = selecionadas.has(d)
@@ -12,6 +12,8 @@ function classeDezena(d, ultimoSorteio, pendentesNoCiclo, selecionadas) {
   if (noUltimo) {
     base = sel
       ? 'bg-purple-900 text-white ring-4 ring-purple-400 scale-110 shadow-lg'
+      : sugerida
+      ? 'bg-purple-900 text-white ring-4 ring-amber-400 shadow-lg animate-pulse'
       : 'bg-purple-900 text-white shadow'
   } else if (pendente) {
     base = sel
@@ -34,6 +36,7 @@ export default function JogarManual() {
   const [pendentes, setPendentes] = useState(null)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [metaRepetidas, setMetaRepetidas] = useState(null)
 
   useEffect(() => {
     Promise.all([sorteiosAPI.listar(0, 1), analiseAPI.ciclo()])
@@ -60,6 +63,12 @@ export default function JogarManual() {
 
   const pares = dezenasSorted.filter((d) => d % 2 === 0).length
   const impares = dezenasSorted.length - pares
+  const repetidas = useMemo(
+    () => (ultimoDezenas ? dezenasSorted.filter((d) => ultimoDezenas.includes(d)).length : 0),
+    [dezenasSorted, ultimoDezenas]
+  )
+  const faixaParidadeOk = pares >= 6 && pares <= 9
+  const faixaRepetidasOk = repetidas >= 8 && repetidas <= 10
 
   async function salvar() {
     if (dezenasSorted.length < 15) {
@@ -119,16 +128,23 @@ export default function JogarManual() {
           </div>
 
           <div className="grid grid-cols-5 gap-2">
-            {DEZENAS.map((d) => (
-              <div key={d} className="flex justify-center">
-                <button
-                  onClick={() => toggle(d)}
-                  className={classeDezena(d, ultimoDezenas, pendentes, selecionadas)}
-                >
-                  {String(d).padStart(2, '0')}
-                </button>
-              </div>
-            ))}
+            {DEZENAS.map((d) => {
+              const sugerida =
+                metaRepetidas != null &&
+                repetidas < metaRepetidas &&
+                ultimoDezenas?.includes(d) &&
+                !selecionadas.has(d)
+              return (
+                <div key={d} className="flex justify-center">
+                  <button
+                    onClick={() => toggle(d)}
+                    className={classeDezena(d, ultimoDezenas, pendentes, selecionadas, sugerida)}
+                  >
+                    {String(d).padStart(2, '0')}
+                  </button>
+                </div>
+              )
+            })}
           </div>
 
           <div className="mt-5 pt-4 border-t border-slate-100">
@@ -154,6 +170,84 @@ export default function JogarManual() {
                 className={`h-full rounded-full transition-all ${progresso >= 15 ? 'bg-emerald-500' : 'bg-purple-500'}`}
                 style={{ width: `${(progresso / 20) * 100}%` }}
               />
+            </div>
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Painel de Estratégia</h3>
+
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold">Paridade</p>
+                <p className="text-sm font-bold text-slate-700">{pares}P / {impares}I</p>
+              </div>
+              <span
+                className={`text-xs font-semibold px-2.5 py-1 rounded-full text-right ${
+                  faixaParidadeOk ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {faixaParidadeOk ? 'Dentro da faixa ideal (6-9)' : 'Faixa ideal: 6 a 9 pares'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold">Repetidas do último sorteio</p>
+                <p className="text-sm font-bold text-slate-700">
+                  {repetidas} dezena{repetidas !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <span
+                className={`text-xs font-semibold px-2.5 py-1 rounded-full text-right ${
+                  faixaRepetidasOk ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {faixaRepetidasOk ? 'Dentro da faixa ideal (8-10)' : 'Faixa ideal: 8 a 10 repetidas'}
+              </span>
+            </div>
+
+            {progresso !== 15 && (
+              <p className="text-[11px] text-slate-400 mb-3 -mt-1.5">
+                Faixas calibradas para jogos de 15 dezenas — em apostas especiais, use como referência.
+              </p>
+            )}
+
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold mb-1.5">
+                Meta de repetidas
+              </p>
+              <div className="flex gap-1.5">
+                {[8, 9, 10].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setMetaRepetidas((prev) => (prev === n ? null : n))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      metaRepetidas === n
+                        ? 'bg-purple-700 text-white shadow'
+                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setMetaRepetidas(null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    metaRepetidas === null
+                      ? 'bg-purple-700 text-white shadow'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  }`}
+                >
+                  Livre
+                </button>
+              </div>
+              {metaRepetidas != null && (
+                <p className="text-xs mt-2 text-purple-600 font-medium">
+                  {repetidas >= metaRepetidas
+                    ? 'Meta atingida! O anel piscando ainda mostra outras dezenas do último sorteio disponíveis, se quiser trocar alguma.'
+                    : `Faltam ${metaRepetidas - repetidas} — as dezenas com anel piscando no último sorteio ainda estão livres pra completar a meta.`}
+                </p>
+              )}
             </div>
           </div>
 
@@ -227,6 +321,7 @@ export default function JogarManual() {
             <p>🟣 <strong>Roxo escuro</strong> — saiu no último sorteio</p>
             <p>🟠 <strong>Laranja</strong> — pendente no ciclo de 25</p>
             <p>🔵 <strong>Roxo claro</strong> — não saiu no último</p>
+            <p>✨ <strong>Anel piscando</strong> — sugestão pra completar sua meta de repetidas</p>
           </div>
         </div>
       </div>
