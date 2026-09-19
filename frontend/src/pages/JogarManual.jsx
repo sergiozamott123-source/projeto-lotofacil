@@ -3,6 +3,24 @@ import { analiseAPI, sorteiosAPI, apostasAPI } from '../services/api'
 
 const DEZENAS = Array.from({ length: 25 }, (_, i) => i + 1)
 
+// Uma dezena é "quente" quando vem saindo em concursos seguidos, sem
+// falhar nenhum, contando a partir do sorteio mais recente. `historico`
+// deve vir ordenado do mais recente para o mais antigo.
+function calcularDezenasQuentes(historico, minStreak = 3) {
+  const quentes = new Set()
+  if (!historico || historico.length === 0) return quentes
+  const ultimo = historico[0]
+  for (const d of ultimo.dezenas) {
+    let streak = 0
+    for (const sorteio of historico) {
+      if (sorteio.dezenas.includes(d)) streak++
+      else break
+    }
+    if (streak >= minStreak) quentes.add(d)
+  }
+  return quentes
+}
+
 function classeDezena(d, ultimoSorteio, pendentesNoCiclo, selecionadas, sugerida) {
   const noUltimo = ultimoSorteio?.includes(d)
   const pendente = pendentesNoCiclo?.includes(d)
@@ -32,20 +50,23 @@ export default function JogarManual() {
   const [selecionadas, setSelecionadas] = useState(new Set())
   const [nome, setNome] = useState('')
   const [concursoAlvo, setConcursoAlvo] = useState('')
-  const [ultimoDezenas, setUltimoDezenas] = useState(null)
+  const [historicoSorteios, setHistoricoSorteios] = useState(null)
   const [pendentes, setPendentes] = useState(null)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [metaRepetidas, setMetaRepetidas] = useState(null)
 
   useEffect(() => {
-    Promise.all([sorteiosAPI.listar(0, 1), analiseAPI.ciclo()])
+    Promise.all([sorteiosAPI.listar(0, 15), analiseAPI.ciclo()])
       .then(([s, c]) => {
-        setUltimoDezenas(s.data[0]?.dezenas ?? [])
+        setHistoricoSorteios(s.data ?? [])
         setPendentes(c.data.dezenas_pendentes ?? [])
       })
       .catch(() => {})
   }, [])
+
+  const ultimoDezenas = historicoSorteios?.[0]?.dezenas ?? null
+  const dezenasQuentes = useMemo(() => calcularDezenasQuentes(historicoSorteios), [historicoSorteios])
 
   function toggle(d) {
     setSelecionadas((prev) => {
@@ -134,14 +155,25 @@ export default function JogarManual() {
                 repetidas < metaRepetidas &&
                 ultimoDezenas?.includes(d) &&
                 !selecionadas.has(d)
+              const quente = dezenasQuentes.has(d)
               return (
                 <div key={d} className="flex justify-center">
-                  <button
-                    onClick={() => toggle(d)}
-                    className={classeDezena(d, ultimoDezenas, pendentes, selecionadas, sugerida)}
-                  >
-                    {String(d).padStart(2, '0')}
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => toggle(d)}
+                      className={classeDezena(d, ultimoDezenas, pendentes, selecionadas, sugerida)}
+                    >
+                      {String(d).padStart(2, '0')}
+                    </button>
+                    {quente && (
+                      <span
+                        className="absolute -top-1 -right-1 text-[11px] leading-none pointer-events-none"
+                        title="Saiu nos últimos 3+ sorteios seguidos, sem falhar"
+                      >
+                        🔥
+                      </span>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -322,6 +354,7 @@ export default function JogarManual() {
             <p>🟠 <strong>Laranja</strong> — pendente no ciclo de 25</p>
             <p>🔵 <strong>Roxo claro</strong> — não saiu no último</p>
             <p>✨ <strong>Anel piscando</strong> — sugestão pra completar sua meta de repetidas</p>
+            <p>🔥 <strong>Chama</strong> — dentre as do último sorteio, saiu 3+ concursos seguidos sem falhar</p>
           </div>
         </div>
       </div>
