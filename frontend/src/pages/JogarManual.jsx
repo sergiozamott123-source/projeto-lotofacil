@@ -68,6 +68,21 @@ export default function JogarManual() {
   const ultimoDezenas = historicoSorteios?.[0]?.dezenas ?? null
   const dezenasQuentes = useMemo(() => calcularDezenasQuentes(historicoSorteios), [historicoSorteios])
 
+  const ultimoSorteioInfo = useMemo(() => {
+    if (!historicoSorteios || historicoSorteios.length === 0) return null
+    const ultimo = historicoSorteios[0]
+    const anterior = historicoSorteios[1] ?? null
+    const paresUltimo = ultimo.dezenas.filter((d) => d % 2 === 0).length
+    return {
+      numero: ultimo.numero_concurso,
+      data: ultimo.data_sorteio,
+      pares: paresUltimo,
+      impares: ultimo.dezenas.length - paresUltimo,
+      numeroAnterior: anterior?.numero_concurso ?? null,
+      repetidasAnterior: anterior ? ultimo.dezenas.filter((d) => anterior.dezenas.includes(d)).length : null,
+    }
+  }, [historicoSorteios])
+
   function toggle(d) {
     setSelecionadas((prev) => {
       const next = new Set(prev)
@@ -131,6 +146,38 @@ export default function JogarManual() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          {ultimoSorteioInfo && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs bg-slate-50 rounded-xl px-3 py-2.5">
+              <span className="font-semibold text-slate-700">
+                Último sorteio: #{ultimoSorteioInfo.numero}
+                {ultimoSorteioInfo.data && (
+                  <span className="font-normal text-slate-400">
+                    {' '}
+                    ({new Date(ultimoSorteioInfo.data).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'long',
+                      year: 'numeric',
+                    })})
+                  </span>
+                )}
+              </span>
+              <span className="text-slate-500">
+                <span className="font-bold text-purple-700">{ultimoSorteioInfo.pares}P</span> /{' '}
+                <span className="font-bold text-purple-700">{ultimoSorteioInfo.impares}I</span>
+              </span>
+              <span className="text-slate-500">
+                {ultimoSorteioInfo.repetidasAnterior != null
+                  ? (
+                    <>
+                      <span className="font-bold text-purple-700">{ultimoSorteioInfo.repetidasAnterior}</span>{' '}
+                      repetidas do #{ultimoSorteioInfo.numeroAnterior}
+                    </>
+                  )
+                  : 'sem sorteio anterior para comparar'}
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-5">
             <div className="flex gap-3 text-sm">
               <span className="flex items-center gap-1.5">
