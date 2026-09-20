@@ -312,6 +312,9 @@ def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict) -> bytes:
         "CorpoSituacao", parent=styles["Normal"], fontSize=9.2, leading=13, textColor=colors.HexColor("#334155"),
     )
     nota_style = ParagraphStyle("NotaSituacao", parent=styles["Normal"], fontSize=8.3, leading=11.5, textColor=CINZA)
+    nota_negrito_style = ParagraphStyle(
+        "NotaSituacaoNegrito", parent=nota_style, fontName="Helvetica-Bold",
+    )
 
     numero = situacao["numero_concurso"]
     gerado_em = datetime.now().strftime("%d/%m/%Y às %H:%M")
@@ -364,12 +367,12 @@ def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict) -> bytes:
     elementos.append(_legenda_classificacao())
 
     elementos.append(Spacer(1, 12))
-    elementos.append(Paragraph(f"<b>{_construir_destaques(situacao, ciclo)}</b>", nota_style))
+    elementos.append(Paragraph(_construir_destaques(situacao, ciclo), nota_negrito_style))
     elementos.append(Paragraph(
-        "<b>Leitura estatística, não preditiva:</b> classificação de frequência, sequências e atraso "
-        "descrevem o comportamento passado das dezenas — nenhum desses indicadores altera a probabilidade "
-        "real de uma dezena sair no próximo concurso. Use como material de apoio para estudar a "
-        "composição do jogo, não como previsão.",
+        '<font name="Helvetica-Bold">Leitura estatística, não preditiva:</font> classificação de frequência, '
+        "sequências e atraso descrevem o comportamento passado das dezenas — nenhum desses indicadores altera "
+        "a probabilidade real de uma dezena sair no próximo concurso. Use como material de apoio para "
+        "estudar a composição do jogo, não como previsão.",
         nota_style,
     ))
 
