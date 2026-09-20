@@ -159,24 +159,6 @@ function CardRepetidas({ repetidas }) {
   )
 }
 
-// Uma dezena é "quente" quando vem saindo em concursos seguidos, sem
-// falhar nenhum, contando a partir do sorteio mais recente. `historico`
-// deve vir ordenado do mais recente para o mais antigo.
-function calcularDezenasQuentes(historico, minStreak = 3) {
-  const quentes = new Set()
-  if (!historico || historico.length === 0) return quentes
-  const ultimo = historico[0]
-  for (const d of ultimo.dezenas) {
-    let streak = 0
-    for (const sorteio of historico) {
-      if (sorteio.dezenas.includes(d)) streak++
-      else break
-    }
-    if (streak >= minStreak) quentes.add(d)
-  }
-  return quentes
-}
-
 function CardDinamicaDezenas({ historico }) {
   if (!historico || historico.length === 0) {
     return (
@@ -185,58 +167,63 @@ function CardDinamicaDezenas({ historico }) {
       </div>
     )
   }
-  const ultimoDezenas = historico[0].dezenas
-  const quentes = calcularDezenasQuentes(historico)
+  const DEZENAS = Array.from({ length: 25 }, (_, i) => i + 1)
 
   return (
     <div className="md:col-span-2">
-      <Card
-        title="Dinâmica das Dezenas"
-        action={
-          <span className="text-xs text-slate-400">
-            <span className="font-semibold text-purple-700">{ultimoDezenas.length}</span> saíram no último
-            {' · '}
-            <span className="font-semibold text-orange-600">{quentes.size}</span> em sequência
-          </span>
-        }
-      >
-        <div className="grid grid-cols-5 gap-2">
-          {Array.from({ length: 25 }, (_, i) => i + 1).map((d) => {
-            const saiu = ultimoDezenas.includes(d)
-            const quente = quentes.has(d)
-            let classe = 'bg-slate-100 text-slate-400'
-            if (saiu && quente) classe = 'bg-orange-500 text-white shadow'
-            else if (saiu) classe = 'bg-purple-900 text-white shadow'
-            return (
-              <div key={d} className="flex justify-center">
-                <div className="relative">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${classe}`}
-                  >
+      <Card title="Dinâmica das Dezenas">
+        <div className="overflow-x-auto -mx-1">
+          <table className="border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="sticky left-0 bg-white px-2 py-1 text-left text-slate-400 font-semibold whitespace-nowrap">
+                  Concurso
+                </th>
+                {DEZENAS.map((d) => (
+                  <th key={d} className="px-0.5 py-1 text-slate-400 font-semibold text-center w-6">
                     {String(d).padStart(2, '0')}
-                  </div>
-                  {saiu && quente && (
-                    <span className="absolute -top-1 -right-1 text-[11px] leading-none pointer-events-none">
-                      🔥
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {historico.map((sorteio, idx) => {
+                const anterior = historico[idx + 1] ?? null
+                return (
+                  <tr key={sorteio.numero_concurso} className="border-t border-slate-100">
+                    <td className="sticky left-0 bg-white px-2 py-1 font-semibold text-slate-700 whitespace-nowrap">
+                      #{sorteio.numero_concurso}
+                    </td>
+                    {DEZENAS.map((d) => {
+                      const saiu = sorteio.dezenas.includes(d)
+                      const repetiu = saiu && anterior != null && anterior.dezenas.includes(d)
+                      let cor = 'bg-slate-50'
+                      if (repetiu) cor = 'bg-orange-500'
+                      else if (saiu) cor = 'bg-purple-900'
+                      return (
+                        <td key={d} className="p-0.5">
+                          <div className={`w-5 h-5 rounded ${cor} mx-auto`} />
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
         <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-500">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-slate-100 border border-slate-200 inline-block" />
-            Não saiu no último
+            <span className="w-3 h-3 rounded bg-slate-50 border border-slate-200 inline-block" />
+            Não saiu
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-purple-900 inline-block" />
-            Saiu no último
+            <span className="w-3 h-3 rounded bg-purple-900 inline-block" />
+            Saiu
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" />
-            🔥 Saiu e está em sequência (3+ concursos seguidos sem falhar)
+            <span className="w-3 h-3 rounded bg-orange-500 inline-block" />
+            Saiu e repetiu do sorteio anterior
           </span>
         </div>
       </Card>
