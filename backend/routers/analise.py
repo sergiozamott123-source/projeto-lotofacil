@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends
+import io
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -7,7 +10,9 @@ from services.analise import (
     analise_paridade,
     analise_repetidas,
     ciclo_atual,
+    situacao_dezenas_ultimo_concurso,
 )
+from services.exportacao import gerar_pdf_situacao_dezenas
 
 router = APIRouter(prefix="/analise", tags=["analise"])
 
@@ -40,3 +45,29 @@ def get_radar(db: Session = Depends(get_db)):
         "repetidas": analise_repetidas(db),
         "frequencia": analise_frequencia(db),
     }
+
+
+# GET /relatorio-dezenas deve vir num path proprio (sem conflito com os
+# demais, todos fixos) — gera o PDF de apoio usado no botao do Jogo Manual.
+@router.get("/relatorio-dezenas")
+def relatorio_dezenas_pdf(db: Session = Depends(get_db)):
+    """
+    Gera um PDF com a situação estatística das 25 dezenas em relação ao
+    último concurso salvo (sequência ativa/chama para as sorteadas,
+    atraso/sequência anterior para as que não saíram, e a classificação
+    de frequência de cada uma) — material de apoio para o usuário
+    estudar antes de montar um jogo no Jogo Manual.
+    """
+    situacao = situacao_dezenas_ultimo_concurso(db)
+    if situacao["numero_concurso"] is None:
+        raise HTTPException(status_code=404, detail="Nenhum sorteio cadastrado ainda")
+
+    ciclo = ciclo_atual(db)
+    pdf_bytes = gerar_pdf_situacao_dezenas(situacao, ciclo)
+
+    nome_arquivo = f"lotofacil-situacao-dezenas-concurso-{situacao['numero_concurso']}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )

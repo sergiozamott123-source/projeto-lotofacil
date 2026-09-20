@@ -22,6 +22,7 @@ export const analiseAPI = {
   paridade: () => api.get('/analise/paridade'),
   repetidas: () => api.get('/analise/repetidas'),
   frequencia: () => api.get('/analise/frequencia'),
+  relatorioDezenasPdf: () => api.get('/analise/relatorio-dezenas', { responseType: 'blob' }),
 }
 
 export const iaAPI = {

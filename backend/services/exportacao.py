@@ -8,7 +8,7 @@ import io
 from datetime import datetime
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
@@ -17,12 +17,20 @@ from reportlab.platypus import (
     TableStyle,
     Paragraph,
     Spacer,
+    HRFlowable,
 )
 
 ROXO = colors.HexColor("#6d28d9")
 ROXO_CLARO = colors.HexColor("#f5f3ff")
 CINZA = colors.HexColor("#64748b")
 BORDA = colors.HexColor("#e2e8f0")
+
+# Cores da classificação de frequência (fria/morna/quente) — mesma
+# paleta usada nos cards do Dashboard e do Jogo Manual.
+COR_QUENTE = colors.HexColor("#fdba74")
+COR_FRIA = colors.HexColor("#93c5fd")
+COR_MORNA = colors.HexColor("#f1f5f9")
+COR_HEADER_TXT = colors.white
 
 FAIXA_LABEL = {
     "quadra": "Quadra (11 acertos)",
@@ -127,6 +135,243 @@ def gerar_pdf_apostas(apostas: list, numero_concurso_alvo: int | None) -> bytes:
             rodape_style,
         )
     )
+
+    doc.build(elementos)
+    return buffer.getvalue()
+
+
+def _cor_classificacao(nome: str):
+    return {"quente": COR_QUENTE, "fria": COR_FRIA, "morna": COR_MORNA}.get(nome, colors.white)
+
+
+def _fmt_dezena(n: int) -> str:
+    return f"{n:02d}"
+
+
+def _tabela_sorteadas(sorteadas: list[dict]) -> Table:
+    cabecalho = [
+        "Dezena", "Sequência ativa\n(concursos seguidos)", "Chama\n(seq. >= 3)",
+        "Classificação", "Freq.\núlt. 10", "Freq.\núlt. 30", "Freq.\núlt. 50", "Freq.\núlt. 100",
+    ]
+    dados = [cabecalho]
+    cores_linha = []
+    for d in sorteadas:
+        dados.append([
+            _fmt_dezena(d["dezena"]),
+            str(d["sequencia_ativa"]),
+            "Sim" if d["em_chama"] else "-",
+            d["classificacao"].capitalize(),
+            str(d["freq_10"]), str(d["freq_30"]), str(d["freq_50"]), str(d["freq_100"]),
+        ])
+        cores_linha.append(_cor_classificacao(d["classificacao"]))
+
+    col_widths = [1.7*cm, 3.5*cm, 2.2*cm, 2.6*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.9*cm]
+    t = Table(dados, colWidths=col_widths, repeatRows=1)
+    estilo = [
+        ("BACKGROUND", (0, 0), (-1, 0), ROXO),
+        ("TEXTCOLOR", (0, 0), (-1, 0), COR_HEADER_TXT),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8.6),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.6, BORDA),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.6),
+    ]
+    for i, c in enumerate(cores_linha, start=1):
+        estilo.append(("BACKGROUND", (3, i), (3, i), c))
+    t.setStyle(TableStyle(estilo))
+    return t
+
+
+def _tabela_nao_sorteadas(nao_sorteadas: list[dict]) -> Table:
+    cabecalho = [
+        "Dezena", "Atraso atual\n(concursos sem sair)", "Sequência anterior\n(antes de parar)",
+        "Classificação", "Freq.\núlt. 10", "Freq.\núlt. 30", "Freq.\núlt. 50", "Freq.\núlt. 100",
+    ]
+    dados = [cabecalho]
+    cores_linha = []
+    for d in nao_sorteadas:
+        dados.append([
+            _fmt_dezena(d["dezena"]),
+            str(d["atraso_atual"]),
+            str(d["sequencia_anterior"]),
+            d["classificacao"].capitalize(),
+            str(d["freq_10"]), str(d["freq_30"]), str(d["freq_50"]), str(d["freq_100"]),
+        ])
+        cores_linha.append(_cor_classificacao(d["classificacao"]))
+
+    col_widths = [1.7*cm, 3.5*cm, 3.5*cm, 2.6*cm, 1.7*cm, 1.7*cm, 1.7*cm, 1.8*cm]
+    t = Table(dados, colWidths=col_widths, repeatRows=1)
+    estilo = [
+        ("BACKGROUND", (0, 0), (-1, 0), ROXO),
+        ("TEXTCOLOR", (0, 0), (-1, 0), COR_HEADER_TXT),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8.6),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.6, BORDA),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.6),
+    ]
+    for i, c in enumerate(cores_linha, start=1):
+        estilo.append(("BACKGROUND", (3, i), (3, i), c))
+    t.setStyle(TableStyle(estilo))
+    return t
+
+
+def _legenda_classificacao() -> Table:
+    style = ParagraphStyle("LegendaPdf", fontName="Helvetica", fontSize=8.3, leading=12, textColor=CINZA)
+    dados = [[
+        Paragraph("Quente", style),
+        Paragraph("Morna", style),
+        Paragraph("Fria", style),
+    ]]
+    t = Table(dados, colWidths=[3*cm, 3*cm, 3*cm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), COR_QUENTE),
+        ("BACKGROUND", (1, 0), (1, 0), COR_MORNA),
+        ("BACKGROUND", (2, 0), (2, 0), COR_FRIA),
+        ("BOX", (0, 0), (0, 0), 0.6, BORDA),
+        ("BOX", (1, 0), (1, 0), 0.6, BORDA),
+        ("BOX", (2, 0), (2, 0), 0.6, BORDA),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    return t
+
+
+def _construir_destaques(situacao: dict, ciclo: dict) -> str:
+    """Monta o parágrafo de destaques dinamicamente a partir dos dados
+    calculados — nunca com números fixos, pra continuar correto em
+    qualquer concurso futuro."""
+    partes = []
+
+    sorteadas = situacao["sorteadas"]
+    if sorteadas:
+        campeao = max(sorteadas, key=lambda d: d["sequencia_ativa"])
+        if campeao["sequencia_ativa"] >= 3:
+            partes.append(
+                f"a dezena {_fmt_dezena(campeao['dezena'])} está na maior sequência ativa "
+                f"({campeao['sequencia_ativa']} concursos seguidos)"
+            )
+
+    rompidas = sorted(
+        (d for d in situacao["nao_sorteadas"] if d["sequencia_anterior"] >= 5),
+        key=lambda d: -d["sequencia_anterior"],
+    )[:3]
+    if rompidas:
+        desc = "; ".join(f"{_fmt_dezena(d['dezena'])} ({d['sequencia_anterior']} concursos)" for d in rompidas)
+        partes.append(f"encerraram sequências longas exatamente neste concurso: {desc}")
+
+    pendentes = ciclo.get("dezenas_pendentes") or []
+    if pendentes:
+        lista = ", ".join(_fmt_dezena(d) for d in pendentes)
+        partes.append(
+            f"as dezenas {lista} são as represadas do ciclo atual "
+            f"(#{ciclo['numero_ciclo_atual']}), sem sair desde o início dele"
+        )
+
+    if not partes:
+        return "Nenhum destaque estatístico relevante identificado para este concurso."
+    return "Destaques do concurso: " + "; ".join(partes) + "."
+
+
+def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict) -> bytes:
+    """Gera o relatório em PDF com a situação estatística das 25 dezenas
+    em relação ao último concurso salvo — material de apoio para o
+    usuário estudar antes de montar um jogo no Jogo Manual."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        title="Lotofácil IA - Situação das Dezenas",
+        leftMargin=1.4 * cm, rightMargin=1.4 * cm, topMargin=1.0 * cm, bottomMargin=1.0 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    titulo_style = ParagraphStyle(
+        "TituloSituacao", parent=styles["Heading1"], textColor=ROXO, fontSize=18, spaceAfter=2,
+    )
+    subtitulo_style = ParagraphStyle(
+        "SubtituloSituacao", parent=styles["Normal"], textColor=CINZA, fontSize=10, spaceAfter=10,
+    )
+    secao_style = ParagraphStyle(
+        "SecaoSituacao", parent=styles["Heading2"], fontSize=13, spaceBefore=12, spaceAfter=5,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    corpo_style = ParagraphStyle(
+        "CorpoSituacao", parent=styles["Normal"], fontSize=9.2, leading=13, textColor=colors.HexColor("#334155"),
+    )
+    nota_style = ParagraphStyle("NotaSituacao", parent=styles["Normal"], fontSize=8.3, leading=11.5, textColor=CINZA)
+
+    numero = situacao["numero_concurso"]
+    gerado_em = datetime.now().strftime("%d/%m/%Y às %H:%M")
+
+    elementos = []
+    elementos.append(Paragraph("LotoIA — Situação Estatística das Dezenas", titulo_style))
+    elementos.append(Paragraph(
+        f"Referência: concurso nº {numero} &nbsp;|&nbsp; Ciclo atual: #{ciclo['numero_ciclo_atual']} "
+        f"&nbsp;|&nbsp; Gerado em {gerado_em}",
+        subtitulo_style,
+    ))
+    elementos.append(HRFlowable(width="100%", thickness=1, color=BORDA))
+
+    elementos.append(Paragraph(
+        f"O concurso #{numero} saiu com {situacao['total_pares']} pares / {situacao['total_impares']} ímpares"
+        + (f" e {situacao['repetidas_anterior']} dezenas repetidas em relação ao concurso anterior."
+           if situacao["repetidas_anterior"] is not None else ".")
+        + " A tabela abaixo resume, para cada uma das 25 dezenas, como ela vinha se comportando nos sorteios "
+        "mais recentes: sequência de acertos consecutivos, atraso atual e classificação de frequência "
+        "(fria / morna / quente).",
+        corpo_style,
+    ))
+
+    sorteadas = situacao["sorteadas"]
+    nao_sorteadas = situacao["nao_sorteadas"]
+    dezenas_sorteadas_fmt = ", ".join(_fmt_dezena(d["dezena"]) for d in sorteadas)
+    dezenas_nao_sorteadas_fmt = ", ".join(_fmt_dezena(d["dezena"]) for d in nao_sorteadas)
+
+    elementos.append(Paragraph(f"1. As {len(sorteadas)} dezenas sorteadas no concurso #{numero}", secao_style))
+    elementos.append(Paragraph(
+        f"{dezenas_sorteadas_fmt} — \"Sequência ativa\" é o número de concursos seguidos (incluindo o "
+        f"#{numero}) em que a dezena vem saindo sem falhar; a partir de 3 concursos seguidos ela é "
+        "marcada como \"chama\" no sistema.",
+        corpo_style,
+    ))
+    elementos.append(Spacer(1, 6))
+    elementos.append(_tabela_sorteadas(sorteadas))
+
+    elementos.append(Paragraph(f"2. As {len(nao_sorteadas)} dezenas que não saíram no concurso #{numero}", secao_style))
+    elementos.append(Paragraph(
+        f"{dezenas_nao_sorteadas_fmt} — \"Atraso atual\" é a quantidade de concursos seguidos sem sair "
+        f"(contando a partir do #{numero}); \"Sequência anterior\" é o tamanho da sequência de acertos "
+        "que a dezena tinha logo antes de parar de sair.",
+        corpo_style,
+    ))
+    elementos.append(Spacer(1, 6))
+    elementos.append(_tabela_nao_sorteadas(nao_sorteadas))
+
+    elementos.append(Spacer(1, 10))
+    elementos.append(_legenda_classificacao())
+
+    elementos.append(Spacer(1, 12))
+    elementos.append(Paragraph(f"<b>{_construir_destaques(situacao, ciclo)}</b>", nota_style))
+    elementos.append(Paragraph(
+        "<b>Leitura estatística, não preditiva:</b> classificação de frequência, sequências e atraso "
+        "descrevem o comportamento passado das dezenas — nenhum desses indicadores altera a probabilidade "
+        "real de uma dezena sair no próximo concurso. Use como material de apoio para estudar a "
+        "composição do jogo, não como previsão.",
+        nota_style,
+    ))
 
     doc.build(elementos)
     return buffer.getvalue()

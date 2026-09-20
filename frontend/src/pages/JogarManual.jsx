@@ -55,6 +55,8 @@ export default function JogarManual() {
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [metaRepetidas, setMetaRepetidas] = useState(null)
+  const [gerandoRelatorio, setGerandoRelatorio] = useState(false)
+  const [erroRelatorio, setErroRelatorio] = useState(null)
 
   useEffect(() => {
     Promise.all([sorteiosAPI.listar(0, 15), analiseAPI.ciclo()])
@@ -135,6 +137,29 @@ export default function JogarManual() {
     }
   }
 
+  async function baixarRelatorioDezenas() {
+    setGerandoRelatorio(true)
+    setErroRelatorio(null)
+    try {
+      const res = await analiseAPI.relatorioDezenasPdf()
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const nomeArquivo = ultimoSorteioInfo
+        ? `lotofacil-situacao-dezenas-concurso-${ultimoSorteioInfo.numero}.pdf`
+        : 'lotofacil-situacao-dezenas.pdf'
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', nomeArquivo)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setErroRelatorio(err.response?.data?.detail ?? 'Erro ao gerar o relatório em PDF.')
+    } finally {
+      setGerandoRelatorio(false)
+    }
+  }
+
   const progresso = selecionadas.size
 
   return (
@@ -178,7 +203,7 @@ export default function JogarManual() {
             </div>
           )}
 
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div className="flex gap-3 text-sm">
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-purple-900" />
@@ -193,7 +218,18 @@ export default function JogarManual() {
                 <span className="text-slate-500">Disponível</span>
               </span>
             </div>
+            <button
+              onClick={baixarRelatorioDezenas}
+              disabled={gerandoRelatorio || !ultimoSorteioInfo}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg shadow transition-all disabled:opacity-40"
+              title="Baixa um PDF com a situação estatística das 25 dezenas em relação ao último concurso"
+            >
+              {gerandoRelatorio ? 'Gerando PDF…' : 'Relatório de Dezenas (PDF)'}
+            </button>
           </div>
+          {erroRelatorio && (
+            <p className="text-xs text-red-600 mb-3">{erroRelatorio}</p>
+          )}
 
           <div className="grid grid-cols-5 gap-2">
             {DEZENAS.map((d) => {

@@ -123,6 +123,32 @@ def analise_repetidas(db: Session) -> list[dict]:
     )
 
 
+def _classificar_frequencia(freq_10: int) -> str:
+    if freq_10 >= 7:
+        return "quente"
+    elif freq_10 <= 4:
+        return "fria"
+    return "morna"
+
+
+def _frequencias_dezena(sorteios: list, dezena: int) -> dict:
+    """Calcula freq_10/30/50/100 e a classificação (fria/morna/quente) de
+    uma dezena, a partir de uma lista de sorteios já ordenada do mais
+    recente para o mais antigo. Compartilhada por `analise_frequencia` e
+    por `situacao_dezenas_ultimo_concurso`, pra manter a mesma régua."""
+    freq_10 = sum(1 for s in sorteios[:10] if dezena in s.dezenas)
+    freq_30 = sum(1 for s in sorteios[:30] if dezena in s.dezenas)
+    freq_50 = sum(1 for s in sorteios[:50] if dezena in s.dezenas)
+    freq_100 = sum(1 for s in sorteios[:100] if dezena in s.dezenas)
+    return {
+        "freq_10": freq_10,
+        "freq_30": freq_30,
+        "freq_50": freq_50,
+        "freq_100": freq_100,
+        "classificacao": _classificar_frequencia(freq_10),
+    }
+
+
 def analise_frequencia(db: Session) -> list[dict]:
     sorteios = (
         db.query(models.Sorteio)
@@ -131,32 +157,93 @@ def analise_frequencia(db: Session) -> list[dict]:
         .all()
     )
 
-    result = []
-    for dezena in range(1, 26):
-        freq_10 = sum(1 for s in sorteios[:10] if dezena in s.dezenas)
-        freq_30 = sum(1 for s in sorteios[:30] if dezena in s.dezenas)
-        freq_50 = sum(1 for s in sorteios[:50] if dezena in s.dezenas)
-        freq_100 = sum(1 for s in sorteios if dezena in s.dezenas)
+    return [
+        {"dezena": dezena, **_frequencias_dezena(sorteios, dezena)}
+        for dezena in range(1, 26)
+    ]
 
-        if freq_10 >= 7:
-            classificacao = "quente"
-        elif freq_10 <= 4:
-            classificacao = "fria"
-        else:
-            classificacao = "morna"
 
-        result.append(
-            {
-                "dezena": dezena,
-                "freq_10": freq_10,
-                "freq_30": freq_30,
-                "freq_50": freq_50,
-                "freq_100": freq_100,
-                "classificacao": classificacao,
-            }
-        )
+def situacao_dezenas_ultimo_concurso(db: Session) -> dict:
+    """
+    Situação estatística de cada uma das 25 dezenas em relação ao último
+    concurso salvo — base do relatório em PDF do Jogo Manual.
 
-    return result
+    - Sorteadas no último concurso: sequência ativa (nº de concursos
+      seguidos, incluindo o último, saindo sem falhar) e se está "em
+      chama" (sequência >= 3, o mesmo critério já usado no frontend).
+    - Não sorteadas: atraso atual (concursos seguidos sem sair, contando
+      a partir do último) e o tamanho da sequência que tinham logo antes
+      de parar de sair.
+
+    Ambos os grupos também trazem a classificação de frequência (fria/
+    morna/quente) já usada em `analise_frequencia`, pra dar o quadro
+    completo numa tacada só.
+    """
+    sorteios = (
+        db.query(models.Sorteio)
+        .order_by(models.Sorteio.numero_concurso.desc())
+        .limit(100)
+        .all()
+    )
+    if not sorteios:
+        return {
+            "numero_concurso": None,
+            "data_sorteio": None,
+            "total_pares": None,
+            "total_impares": None,
+            "repetidas_anterior": None,
+            "sorteadas": [],
+            "nao_sorteadas": [],
+        }
+
+    ultimo = sorteios[0]
+    sorteadas_set = set(ultimo.dezenas)
+    nao_sorteadas_set = set(range(1, 26)) - sorteadas_set
+
+    sorteadas = []
+    for dezena in sorted(sorteadas_set):
+        streak = 0
+        for s in sorteios:
+            if dezena in s.dezenas:
+                streak += 1
+            else:
+                break
+        sorteadas.append({
+            "dezena": dezena,
+            "sequencia_ativa": streak,
+            "em_chama": streak >= 3,
+            **_frequencias_dezena(sorteios, dezena),
+        })
+
+    nao_sorteadas = []
+    for dezena in sorted(nao_sorteadas_set):
+        atraso = 0
+        for s in sorteios:
+            if dezena in s.dezenas:
+                break
+            atraso += 1
+        sequencia_anterior = 0
+        for s in sorteios[atraso:]:
+            if dezena in s.dezenas:
+                sequencia_anterior += 1
+            else:
+                break
+        nao_sorteadas.append({
+            "dezena": dezena,
+            "atraso_atual": atraso,
+            "sequencia_anterior": sequencia_anterior,
+            **_frequencias_dezena(sorteios, dezena),
+        })
+
+    return {
+        "numero_concurso": ultimo.numero_concurso,
+        "data_sorteio": ultimo.data_sorteio,
+        "total_pares": ultimo.total_pares,
+        "total_impares": ultimo.total_impares,
+        "repetidas_anterior": ultimo.repetidas_anterior,
+        "sorteadas": sorteadas,
+        "nao_sorteadas": nao_sorteadas,
+    }
 
 
 def _calcular_stats(dezenas: list[int], ultimo_dezenas: list[int]) -> dict:
