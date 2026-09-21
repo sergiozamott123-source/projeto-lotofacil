@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { analiseAPI, sorteiosAPI } from '../services/api'
+import { PainelPosJogoGeral } from '../components/PosJogoPanel'
 
 function Ball({ numero, variant = 'default', size = 'md' }) {
   const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
@@ -231,7 +232,7 @@ function CardDinamicaDezenas({ historico }) {
   )
 }
 
-function CardUltimoSorteio({ sorteio }) {
+function CardUltimoSorteio({ sorteio, onVerPosJogo }) {
   if (!sorteio) return <Skeleton className="h-48" />
   const data = new Date(sorteio.data_sorteio).toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -239,7 +240,17 @@ function CardUltimoSorteio({ sorteio }) {
     year: 'numeric',
   })
   return (
-    <Card title="Último Sorteio">
+    <Card
+      title="Último Sorteio"
+      action={
+        <button
+          onClick={() => onVerPosJogo(sorteio.numero_concurso)}
+          className="text-xs text-purple-600 hover:text-purple-800 font-medium underline-offset-2 hover:underline"
+        >
+          Análise Pós-Jogo
+        </button>
+      }
+    >
       <div className="mb-3">
         <span className="text-2xl font-black text-purple-700">#{sorteio.numero_concurso}</span>
         <p className="text-xs text-slate-400 mt-0.5">{data}</p>
@@ -275,6 +286,7 @@ export default function Dashboard() {
   const [dataManual, setDataManual] = useState('')
   const [dezenasManual, setDezenasManual] = useState(new Set())
   const [salvandoManual, setSalvandoManual] = useState(false)
+  const [posJogoGeralConcurso, setPosJogoGeralConcurso] = useState(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -466,11 +478,15 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <CardCiclo ciclo={radar?.ciclo} />
-          <CardUltimoSorteio sorteio={ultimoSorteio} />
+          <CardUltimoSorteio sorteio={ultimoSorteio} onVerPosJogo={setPosJogoGeralConcurso} />
           <CardParidade paridade={radar?.paridade} />
           <CardRepetidas repetidas={radar?.repetidas} />
           <CardDinamicaDezenas historico={historicoSorteios} />
         </div>
+      )}
+
+      {posJogoGeralConcurso != null && (
+        <PainelPosJogoGeral numeroConcurso={posJogoGeralConcurso} onFechar={() => setPosJogoGeralConcurso(null)} />
       )}
     </div>
   )

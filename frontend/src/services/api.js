@@ -46,6 +46,11 @@ export const apostasAPI = {
       params: numeroConcursoAlvo ? { numero_concurso_alvo: numeroConcursoAlvo } : {},
       responseType: 'blob',
     }),
+  posJogo: (id) => api.get(`/apostas/${id}/pos-jogo`),
+  posJogoPdf: (id) => api.get(`/apostas/${id}/pos-jogo/pdf`, { responseType: 'blob' }),
+  posJogoGeral: (numeroConcurso) => api.get(`/apostas/pos-jogo-geral/${numeroConcurso}`),
+  posJogoGeralPdf: (numeroConcurso) =>
+    api.get(`/apostas/pos-jogo-geral/${numeroConcurso}/pdf`, { responseType: 'blob' }),
 }
 
 export const jogosAPI = {

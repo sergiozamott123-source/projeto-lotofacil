@@ -10,8 +10,9 @@ from pydantic import BaseModel
 from database import get_db
 import models
 import schemas
+from services.analise import analise_pos_jogo_individual, analise_pos_jogo_geral
 from services.conferencia import conferir_pendentes, conferir_pendentes_e_notificar, FAIXAS_PREMIO
-from services.exportacao import gerar_pdf_apostas
+from services.exportacao import gerar_pdf_apostas, gerar_pdf_pos_jogo_individual, gerar_pdf_pos_jogo_geral
 
 router = APIRouter(prefix="/apostas", tags=["apostas"])
 
@@ -232,6 +233,67 @@ def conferir_aposta(aposta_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(jogo)
     return jogo
+
+
+# --- Pós-jogo: análise crítica de apostas já conferidas contra o resultado
+# oficial — o par, olhando pra trás, do relatório de situação das dezenas
+# (pré-jogo) em routers/analise.py. Individual (por aposta) e geral (todas
+# as apostas conferidas de um concurso).
+
+@router.get("/{aposta_id}/pos-jogo")
+def pos_jogo_individual(aposta_id: int, db: Session = Depends(get_db)):
+    analise = analise_pos_jogo_individual(db, aposta_id)
+    if analise is None:
+        aposta = db.query(models.Aposta).filter(models.Aposta.id == aposta_id).first()
+        if not aposta:
+            raise HTTPException(status_code=404, detail="Aposta não encontrada")
+        raise HTTPException(
+            status_code=409,
+            detail="Esta aposta ainda não foi conferida — confira-a antes de ver a análise pós-jogo.",
+        )
+    return analise
+
+
+@router.get("/{aposta_id}/pos-jogo/pdf")
+def pos_jogo_individual_pdf(aposta_id: int, db: Session = Depends(get_db)):
+    analise = analise_pos_jogo_individual(db, aposta_id)
+    if analise is None:
+        aposta = db.query(models.Aposta).filter(models.Aposta.id == aposta_id).first()
+        if not aposta:
+            raise HTTPException(status_code=404, detail="Aposta não encontrada")
+        raise HTTPException(
+            status_code=409,
+            detail="Esta aposta ainda não foi conferida — confira-a antes de gerar a análise pós-jogo.",
+        )
+    pdf_bytes = gerar_pdf_pos_jogo_individual(analise)
+    nome_arquivo = f"lotofacil-pos-jogo-aposta-{aposta_id}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+@router.get("/pos-jogo-geral/{numero_concurso}")
+def pos_jogo_geral(numero_concurso: int, db: Session = Depends(get_db)):
+    analise = analise_pos_jogo_geral(db, numero_concurso)
+    if analise is None:
+        raise HTTPException(status_code=404, detail=f"Concurso {numero_concurso} não encontrado na base")
+    return analise
+
+
+@router.get("/pos-jogo-geral/{numero_concurso}/pdf")
+def pos_jogo_geral_pdf(numero_concurso: int, db: Session = Depends(get_db)):
+    analise = analise_pos_jogo_geral(db, numero_concurso)
+    if analise is None:
+        raise HTTPException(status_code=404, detail=f"Concurso {numero_concurso} não encontrado na base")
+    pdf_bytes = gerar_pdf_pos_jogo_geral(analise)
+    nome_arquivo = f"lotofacil-pos-jogo-concurso-{numero_concurso}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
 
 
 @router.delete("/{aposta_id}", status_code=204)

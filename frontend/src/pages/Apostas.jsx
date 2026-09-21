@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apostasAPI, jogosAPI } from '../services/api'
+import { PainelPosJogoIndividual, PainelPosJogoGeral } from '../components/PosJogoPanel'
 
 const FAIXA_LABEL = {
   quadra: { label: 'Quadra', color: 'bg-sky-100 text-sky-700' },
@@ -49,7 +50,7 @@ function CardResumo({ resumo }) {
   )
 }
 
-function CardAposta({ aposta, jogo, onDeletar, onConferir, conferindo }) {
+function CardAposta({ aposta, jogo, onDeletar, onConferir, conferindo, onVerPosJogo }) {
   const [expandido, setExpandido] = useState(false)
 
   return (
@@ -101,12 +102,22 @@ function CardAposta({ aposta, jogo, onDeletar, onConferir, conferindo }) {
         </div>
       </div>
 
-      <button
-        onClick={() => setExpandido((v) => !v)}
-        className="text-xs text-slate-400 hover:text-slate-600 underline-offset-2 hover:underline"
-      >
-        {expandido ? 'Ocultar dezenas' : 'Ver dezenas'}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setExpandido((v) => !v)}
+          className="text-xs text-slate-400 hover:text-slate-600 underline-offset-2 hover:underline"
+        >
+          {expandido ? 'Ocultar dezenas' : 'Ver dezenas'}
+        </button>
+        {jogo && (
+          <button
+            onClick={() => onVerPosJogo(aposta.id)}
+            className="text-xs text-purple-600 hover:text-purple-800 font-medium underline-offset-2 hover:underline"
+          >
+            Ver Análise Pós-Jogo
+          </button>
+        )}
+      </div>
 
       {expandido && (
         <div className="mt-3 pt-3 border-t border-slate-100">
@@ -146,6 +157,8 @@ export default function Apostas() {
   const [msg, setMsg] = useState(null)
   const [filtroConcurso, setFiltroConcurso] = useState('')
   const [exportando, setExportando] = useState(false)
+  const [posJogoApostaId, setPosJogoApostaId] = useState(null)
+  const [posJogoGeralConcurso, setPosJogoGeralConcurso] = useState(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -279,6 +292,14 @@ export default function Apostas() {
         >
           {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
         </button>
+        <button
+          onClick={() => setPosJogoGeralConcurso(parseInt(filtroConcurso))}
+          disabled={!filtroConcurso}
+          title={!filtroConcurso ? 'Informe o número do concurso acima para ver a análise pós-jogo geral' : undefined}
+          className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-40"
+        >
+          Análise Pós-Jogo do Concurso
+        </button>
       </div>
 
       {msg && (
@@ -316,9 +337,17 @@ export default function Apostas() {
               onDeletar={deletar}
               onConferir={conferir}
               conferindo={conferindoId === aposta.id}
+              onVerPosJogo={setPosJogoApostaId}
             />
           ))}
         </div>
+      )}
+
+      {posJogoApostaId != null && (
+        <PainelPosJogoIndividual apostaId={posJogoApostaId} onFechar={() => setPosJogoApostaId(null)} />
+      )}
+      {posJogoGeralConcurso != null && !Number.isNaN(posJogoGeralConcurso) && (
+        <PainelPosJogoGeral numeroConcurso={posJogoGeralConcurso} onFechar={() => setPosJogoGeralConcurso(null)} />
       )}
     </div>
   )

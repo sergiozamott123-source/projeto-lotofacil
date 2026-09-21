@@ -163,7 +163,7 @@ def analise_frequencia(db: Session) -> list[dict]:
     ]
 
 
-def situacao_dezenas_ultimo_concurso(db: Session) -> dict:
+def situacao_dezenas_ultimo_concurso(db: Session, antes_de: int | None = None) -> dict:
     """
     Situação estatística de cada uma das 25 dezenas em relação ao último
     concurso salvo — base do relatório em PDF do Jogo Manual.
@@ -178,9 +178,17 @@ def situacao_dezenas_ultimo_concurso(db: Session) -> dict:
     Ambos os grupos também trazem a classificação de frequência (fria/
     morna/quente) já usada em `analise_frequencia`, pra dar o quadro
     completo numa tacada só.
+
+    Se `antes_de` for passado, considera apenas concursos anteriores a
+    ele (ignora o que está salvo a partir dali) — usado pela análise
+    pós-jogo pra reconstruir a situação exatamente como ela estava antes
+    de um concurso específico sair, em vez do estado atual do banco.
     """
+    query = db.query(models.Sorteio)
+    if antes_de is not None:
+        query = query.filter(models.Sorteio.numero_concurso < antes_de)
     sorteios = (
-        db.query(models.Sorteio)
+        query
         .order_by(models.Sorteio.numero_concurso.desc())
         .limit(100)
         .all()
@@ -262,7 +270,7 @@ _MEDIA_ESPERADA_POR_ETAPA = 3.0
 _LIMIAR_DESVIO_TENDENCIA = 0.5  # abaixo disso, consideramos "equilibrada"
 
 
-def analise_etapas(db: Session, n_concursos: int = 5) -> dict:
+def analise_etapas(db: Session, n_concursos: int = 5, antes_de: int | None = None) -> dict:
     """
     Divide as 25 dezenas em 5 etapas fixas de 5 dezenas cada (1-5, 6-10,
     11-15, 16-20, 21-25) — inspirado na ideia de "setores" de um circuito:
@@ -279,9 +287,15 @@ def analise_etapas(db: Session, n_concursos: int = 5) -> dict:
     demais seções do relatório — não é sinal preditivo nem critério
     validado de composição (esses seguem sendo só paridade, repetidas e
     ciclo, documentados em criterios-e-jogos.md).
+
+    Se `antes_de` for passado, considera apenas concursos anteriores a
+    ele — mesmo uso do parâmetro em `situacao_dezenas_ultimo_concurso`.
     """
+    query = db.query(models.Sorteio)
+    if antes_de is not None:
+        query = query.filter(models.Sorteio.numero_concurso < antes_de)
     sorteios = (
-        db.query(models.Sorteio)
+        query
         .order_by(models.Sorteio.numero_concurso.desc())
         .limit(n_concursos)
         .all()
@@ -342,6 +356,215 @@ def analise_etapas(db: Session, n_concursos: int = 5) -> dict:
         "n_concursos": n,
         "media_esperada_por_concurso": _MEDIA_ESPERADA_POR_ETAPA,
         "etapas": etapas_resultado,
+    }
+
+
+def analise_pos_jogo_individual(db: Session, aposta_id: int) -> dict | None:
+    """
+    Análise "pós-jogo" de uma aposta já conferida: compara o que a
+    aposta trazia (dezenas, paridade, repetidas em relação ao concurso
+    anterior ao alvo, dezenas quentes/em chama na época) com o que
+    realmente saiu no concurso-alvo — no mesmo espírito descritivo, não
+    preditivo, das demais análises do projeto ("pré-jogo" vira "pós-jogo").
+
+    A situação "quente"/"em chama" e o panorama por etapas usados aqui
+    são sempre calculados com base no concurso IMEDIATAMENTE ANTERIOR ao
+    concurso-alvo da aposta (parâmetro `antes_de` de
+    `situacao_dezenas_ultimo_concurso` e `analise_etapas`), nunca com
+    base no estado atual do banco — assim o relatório de uma aposta
+    antiga sempre mostra o mesmo resultado, não importa quando for
+    consultado depois.
+
+    Retorna None se a aposta não existir, não tiver concurso-alvo, ainda
+    não tiver sido conferida (JogoRealizado ainda não existe), ou se o
+    sorteio do concurso-alvo não estiver na base.
+    """
+    aposta = db.query(models.Aposta).filter(models.Aposta.id == aposta_id).first()
+    if aposta is None or aposta.numero_concurso_alvo is None:
+        return None
+
+    jogo = (
+        db.query(models.JogoRealizado)
+        .filter(models.JogoRealizado.aposta_id == aposta_id)
+        .first()
+    )
+    if jogo is None:
+        return None
+
+    sorteio = (
+        db.query(models.Sorteio)
+        .filter(models.Sorteio.numero_concurso == aposta.numero_concurso_alvo)
+        .first()
+    )
+    if sorteio is None:
+        return None
+
+    dezenas_aposta = sorted(aposta.dezenas)
+    dezenas_sorteadas = sorted(sorteio.dezenas)
+    dezenas_acertadas = sorted(jogo.dezenas_acertadas or [])
+    dezenas_erradas = sorted(set(dezenas_aposta) - set(dezenas_acertadas))
+    dezenas_nao_apostadas = sorted(set(dezenas_sorteadas) - set(dezenas_acertadas))
+
+    pares_aposta = sum(1 for d in dezenas_aposta if d % 2 == 0)
+
+    situacao_antes = situacao_dezenas_ultimo_concurso(db, antes_de=aposta.numero_concurso_alvo)
+    repetidas_previstas = None
+    quentes_antes: set[int] = set()
+    chama_antes: set[int] = set()
+    if situacao_antes["numero_concurso"] is not None:
+        concurso_anterior_dezenas = {d["dezena"] for d in situacao_antes["sorteadas"]}
+        repetidas_previstas = len(set(dezenas_aposta) & concurso_anterior_dezenas)
+        quentes_antes = {d["dezena"] for d in situacao_antes["sorteadas"] if d["classificacao"] == "quente"}
+        chama_antes = {d["dezena"] for d in situacao_antes["sorteadas"] if d["em_chama"]}
+
+    quentes_na_aposta = sorted(set(dezenas_aposta) & quentes_antes)
+    chama_na_aposta = sorted(set(dezenas_aposta) & chama_antes)
+
+    etapas_antes = analise_etapas(db, n_concursos=5, antes_de=aposta.numero_concurso_alvo)
+    etapas_comparacao = []
+    for etapa in etapas_antes.get("etapas", []):
+        faixa = set(range(etapa["inicio"], etapa["fim"] + 1))
+        apostadas_na_etapa = sorted(set(dezenas_aposta) & faixa)
+        sorteadas_na_etapa = sorted(set(dezenas_sorteadas) & faixa)
+        acertadas_na_etapa = sorted(set(dezenas_acertadas) & faixa)
+        etapas_comparacao.append({
+            "etapa": etapa["etapa"],
+            "nome": etapa["nome"],
+            "inicio": etapa["inicio"],
+            "fim": etapa["fim"],
+            "tendencia_recente": etapa["tendencia"],
+            "dezenas_apostadas": apostadas_na_etapa,
+            "qtd_apostada": len(apostadas_na_etapa),
+            "dezenas_sorteadas": sorteadas_na_etapa,
+            "qtd_sorteada": len(sorteadas_na_etapa),
+            "dezenas_acertadas": acertadas_na_etapa,
+            "qtd_acertada": len(acertadas_na_etapa),
+        })
+
+    return {
+        "aposta_id": aposta.id,
+        "nome_aposta": aposta.nome,
+        "numero_concurso_alvo": aposta.numero_concurso_alvo,
+        "data_sorteio": sorteio.data_sorteio,
+        "dezenas_aposta": dezenas_aposta,
+        "dezenas_sorteadas": dezenas_sorteadas,
+        "dezenas_acertadas": dezenas_acertadas,
+        "dezenas_erradas": dezenas_erradas,
+        "dezenas_nao_apostadas": dezenas_nao_apostadas,
+        "total_acertos": jogo.total_acertos,
+        "premiado": jogo.premiado,
+        "faixa_premio": jogo.faixa_premio,
+        "paridade_aposta": {"pares": pares_aposta, "impares": len(dezenas_aposta) - pares_aposta},
+        "paridade_real": {"pares": sorteio.total_pares, "impares": sorteio.total_impares},
+        "repetidas_previstas": repetidas_previstas,
+        "repetidas_reais_concurso": sorteio.repetidas_anterior,
+        "quentes_na_aposta": quentes_na_aposta,
+        "chama_na_aposta": chama_na_aposta,
+        "quentes_na_aposta_que_sairam": sorted(set(quentes_na_aposta) & set(dezenas_acertadas)),
+        "chama_na_aposta_que_sairam": sorted(set(chama_na_aposta) & set(dezenas_acertadas)),
+        "etapas": etapas_comparacao,
+    }
+
+
+def analise_pos_jogo_geral(db: Session, numero_concurso: int) -> dict | None:
+    """
+    Versão agregada da análise pós-jogo: reúne todas as apostas já
+    conferidas para um concurso específico, com a mesma referência "de
+    antes do concurso" usada na versão individual (quentes/chama e
+    panorama por etapas calculados com base no concurso anterior a
+    `numero_concurso`, nunca com base no estado atual do banco).
+
+    Retorna None se o concurso não existir na base. Se existir mas
+    nenhuma aposta tiver sido conferida para ele, retorna a análise do
+    concurso mesmo assim, com `apostas` vazio.
+    """
+    sorteio = (
+        db.query(models.Sorteio)
+        .filter(models.Sorteio.numero_concurso == numero_concurso)
+        .first()
+    )
+    if sorteio is None:
+        return None
+
+    registros = (
+        db.query(models.JogoRealizado, models.Aposta)
+        .join(models.Aposta, models.JogoRealizado.aposta_id == models.Aposta.id)
+        .filter(models.JogoRealizado.numero_concurso == numero_concurso)
+        .order_by(models.JogoRealizado.total_acertos.desc())
+        .all()
+    )
+
+    apostas_resumo = [
+        {
+            "aposta_id": aposta.id,
+            "nome_aposta": aposta.nome,
+            "dezenas": sorted(aposta.dezenas),
+            "total_acertos": jogo.total_acertos,
+            "premiado": jogo.premiado,
+            "faixa_premio": jogo.faixa_premio,
+        }
+        for jogo, aposta in registros
+    ]
+
+    total_apostas = len(apostas_resumo)
+    distribuicao: dict[int, int] = {}
+    for r in apostas_resumo:
+        distribuicao[r["total_acertos"]] = distribuicao.get(r["total_acertos"], 0) + 1
+
+    melhor_resultado = max((r["total_acertos"] for r in apostas_resumo), default=None)
+    total_premiadas = sum(1 for r in apostas_resumo if r["premiado"])
+    media_acertos = (
+        round(sum(r["total_acertos"] for r in apostas_resumo) / total_apostas, 2)
+        if total_apostas else None
+    )
+
+    situacao_antes = situacao_dezenas_ultimo_concurso(db, antes_de=numero_concurso)
+    quentes_antes: list[int] = []
+    chama_antes: list[int] = []
+    repetidas_previstas_media = None
+    if situacao_antes["numero_concurso"] is not None:
+        concurso_anterior_dezenas = {d["dezena"] for d in situacao_antes["sorteadas"]}
+        quentes_antes = sorted(d["dezena"] for d in situacao_antes["sorteadas"] if d["classificacao"] == "quente")
+        chama_antes = sorted(d["dezena"] for d in situacao_antes["sorteadas"] if d["em_chama"])
+        if total_apostas:
+            repetidas_previstas_media = round(
+                sum(len(set(r["dezenas"]) & concurso_anterior_dezenas) for r in apostas_resumo) / total_apostas,
+                2,
+            )
+
+    etapas_antes = analise_etapas(db, n_concursos=5, antes_de=numero_concurso)
+    etapas_resultado = []
+    for etapa in etapas_antes.get("etapas", []):
+        faixa = set(range(etapa["inicio"], etapa["fim"] + 1))
+        sorteadas_na_etapa = sorted(set(sorteio.dezenas) & faixa)
+        etapas_resultado.append({
+            "etapa": etapa["etapa"],
+            "nome": etapa["nome"],
+            "inicio": etapa["inicio"],
+            "fim": etapa["fim"],
+            "tendencia_recente": etapa["tendencia"],
+            "dezenas_sorteadas": sorteadas_na_etapa,
+            "qtd_sorteada": len(sorteadas_na_etapa),
+        })
+
+    return {
+        "numero_concurso": numero_concurso,
+        "data_sorteio": sorteio.data_sorteio,
+        "dezenas_sorteadas": sorted(sorteio.dezenas),
+        "paridade_real": {"pares": sorteio.total_pares, "impares": sorteio.total_impares},
+        "repetidas_reais_concurso": sorteio.repetidas_anterior,
+        "total_apostas": total_apostas,
+        "total_premiadas": total_premiadas,
+        "melhor_resultado": melhor_resultado,
+        "media_acertos": media_acertos,
+        "repetidas_previstas_media": repetidas_previstas_media,
+        "distribuicao_acertos": [
+            {"total_acertos": k, "quantidade": v} for k, v in sorted(distribuicao.items())
+        ],
+        "apostas": apostas_resumo,
+        "etapas": etapas_resultado,
+        "quentes_antes": quentes_antes,
+        "chama_antes": chama_antes,
     }
 
 
