@@ -249,6 +249,49 @@ def _legenda_classificacao() -> Table:
     return t
 
 
+def _tabela_sugestoes(sugestoes: list[dict]) -> Table:
+    cabecalho = [
+        "Sugestão", "Dezenas do jogo", "Pares /\nÍmpares", "Repetidas\ndo último", "Dezenas quentes incluídas",
+    ]
+    dados = [cabecalho]
+    for i, s in enumerate(sugestoes, start=1):
+        dezenas_fmt = " ".join(_fmt_dezena(d) for d in s["dezenas"])
+        quentes_fmt = ", ".join(_fmt_dezena(d) for d in s["quentes_incluidas"]) if s["quentes_incluidas"] else "—"
+        dados.append([
+            str(i),
+            dezenas_fmt,
+            f"{s['pares']}P / {s['impares']}I",
+            str(s["repetidas_reais"]),
+            quentes_fmt,
+        ])
+
+    col_widths = [1.6*cm, 10.8*cm, 2.4*cm, 2.4*cm, 6.0*cm]
+    t = Table(dados, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), ROXO),
+        ("TEXTCOLOR", (0, 0), (-1, 0), COR_HEADER_TXT),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8.6),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (0, -1), 10),
+        ("FONTNAME", (1, 1), (1, -1), "Courier-Bold"),
+        ("FONTSIZE", (1, 1), (1, -1), 9.5),
+        ("FONTNAME", (2, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (2, 1), (-1, -1), 8.8),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (1, 0), (1, -1), "CENTER"),
+        ("ALIGN", (2, 0), (3, -1), "CENTER"),
+        ("ALIGN", (4, 0), (4, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.6, BORDA),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (4, 1), (4, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROXO_CLARO]),
+    ]))
+    return t
+
+
 def _construir_destaques(situacao: dict, ciclo: dict) -> str:
     """Monta o parágrafo de destaques dinamicamente a partir dos dados
     calculados — nunca com números fixos, pra continuar correto em
@@ -285,10 +328,13 @@ def _construir_destaques(situacao: dict, ciclo: dict) -> str:
     return "Destaques do concurso: " + "; ".join(partes) + "."
 
 
-def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict) -> bytes:
+def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict, sugestoes: list[dict] | None = None) -> bytes:
     """Gera o relatório em PDF com a situação estatística das 25 dezenas
     em relação ao último concurso salvo — material de apoio para o
-    usuário estudar antes de montar um jogo no Jogo Manual."""
+    usuário estudar antes de montar um jogo no Jogo Manual. Quando
+    `sugestoes` é passado (ver `services.analise.gerar_sugestoes_fortes`),
+    inclui também uma seção de recomendação combinando paridade, meta de
+    repetidas e dezenas quentes/em chama."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -375,6 +421,28 @@ def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict) -> bytes:
         "estudar a composição do jogo, não como previsão.",
         nota_style,
     ))
+
+    if sugestoes:
+        elementos.append(Paragraph("3. Sugestões de apostas — recomendação combinada", secao_style))
+        elementos.append(Paragraph(
+            "Combinando os critérios já validados no sistema — paridade equilibrada, meta de repetidas em "
+            f"relação ao concurso #{numero} e as dezenas com sinal mais forte de \"quente\" nos sorteios "
+            "recentes — seguem sugestões de apostas para servir de ponto de partida na montagem do seu jogo "
+            "manual. Cada sugestão prioriza as dezenas em chama e classificadas como quentes, dentro de uma "
+            "meta diferente de repetidas e da paridade validada estatisticamente para o projeto.",
+            corpo_style,
+        ))
+        elementos.append(Spacer(1, 6))
+        elementos.append(_tabela_sugestoes(sugestoes))
+        elementos.append(Spacer(1, 8))
+        elementos.append(Paragraph(
+            '<font name="Helvetica-Bold">Recomendação, não garantia:</font> estas sugestões combinam critérios '
+            "estatísticos já validados no projeto (paridade, repetidas e frequência recente) para orientar a "
+            "composição do jogo — elas não aumentam a probabilidade real de acerto, que é a mesma para "
+            "qualquer combinação de 15 dezenas. Use como ponto de partida para o seu próprio jogo manual, "
+            "ajustando à vontade.",
+            nota_style,
+        ))
 
     doc.build(elementos)
     return buffer.getvalue()

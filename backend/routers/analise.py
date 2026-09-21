@@ -10,6 +10,7 @@ from services.analise import (
     analise_paridade,
     analise_repetidas,
     ciclo_atual,
+    gerar_sugestoes_fortes,
     situacao_dezenas_ultimo_concurso,
 )
 from services.exportacao import gerar_pdf_situacao_dezenas
@@ -63,7 +64,8 @@ def relatorio_dezenas_pdf(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Nenhum sorteio cadastrado ainda")
 
     ciclo = ciclo_atual(db)
-    pdf_bytes = gerar_pdf_situacao_dezenas(situacao, ciclo)
+    sugestoes = gerar_sugestoes_fortes(situacao)
+    pdf_bytes = gerar_pdf_situacao_dezenas(situacao, ciclo, sugestoes)
 
     nome_arquivo = f"lotofacil-situacao-dezenas-concurso-{situacao['numero_concurso']}.pdf"
     return StreamingResponse(

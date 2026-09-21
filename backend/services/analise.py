@@ -246,6 +246,88 @@ def situacao_dezenas_ultimo_concurso(db: Session) -> dict:
     }
 
 
+def gerar_sugestoes_fortes(situacao: dict) -> list[dict]:
+    """
+    Combina os critérios já validados no projeto — paridade (`_PARIDADES_VALIDAS`),
+    meta de repetidas do concurso anterior (8/9/10) e as dezenas quentes/em chama
+    calculadas em `situacao_dezenas_ultimo_concurso` — pra sugerir até 3 apostas
+    "fortes", como material de apoio consultivo pro Jogo Manual.
+
+    Não é previsão: é uma seleção determinística dentro dos critérios já
+    validados estatisticamente (ver `criterios-e-jogos.md`), priorizando as
+    dezenas com sinal mais recente de "quente" em cada faixa. A divisão exata
+    pares/ímpares entre "repete do último concurso" e "vem das que não saíram"
+    reaproveita `_plano_do_jogo`, o mesmo solver combinatório já validado e em
+    produção no Motor Estatístico (`services/motor.py`) — import local pra não
+    criar dependência circular entre os dois módulos.
+    """
+    from services.motor import _plano_do_jogo, PAR, IMPAR
+
+    sorteadas = situacao.get("sorteadas") or []
+    nao_sorteadas = situacao.get("nao_sorteadas") or []
+    if len(sorteadas) != 15 or len(nao_sorteadas) != 10:
+        return []
+
+    def prioridade_repetir(d: dict) -> tuple:
+        return (
+            1 if d["em_chama"] else 0,
+            d["sequencia_ativa"],
+            1 if d["classificacao"] == "quente" else 0,
+            d["freq_10"],
+        )
+
+    def prioridade_nova(d: dict) -> tuple:
+        return (
+            1 if d["classificacao"] == "quente" else 0,
+            d["sequencia_anterior"],
+            d["freq_10"],
+        )
+
+    repetir_ordenado = sorted(sorteadas, key=prioridade_repetir, reverse=True)
+    novas_ordenado = sorted(nao_sorteadas, key=prioridade_nova, reverse=True)
+
+    repetir_even = [d for d in repetir_ordenado if d["dezena"] in PAR]
+    repetir_odd = [d for d in repetir_ordenado if d["dezena"] in IMPAR]
+    novas_even = [d for d in novas_ordenado if d["dezena"] in PAR]
+    novas_odd = [d for d in novas_ordenado if d["dezena"] in IMPAR]
+
+    # (repetidas_alvo, pares_alvo) — paridade alternando entre os dois pares
+    # mais usados na metodologia validada (8P/7I e 7P/8I), repetidas cobrindo
+    # a faixa 8/9/10 documentada em criterios-e-jogos.md.
+    planos = [(8, 8), (9, 7), (10, 8)]
+
+    sugestoes = []
+    for repetidas_alvo, pares_alvo in planos:
+        try:
+            a_even, a_odd, b_even, b_odd = _plano_do_jogo(
+                repetidas_alvo, pares_alvo,
+                len(repetir_even), len(repetir_odd), len(novas_even), len(novas_odd),
+            )
+        except ValueError:
+            continue  # combinação inviável com os dados atuais — pula essa sugestão
+
+        escolhidas_repetir = repetir_even[:a_even] + repetir_odd[:a_odd]
+        escolhidas_novas = novas_even[:b_even] + novas_odd[:b_odd]
+        todas = escolhidas_repetir + escolhidas_novas
+        dezenas = sorted(d["dezena"] for d in todas)
+
+        quentes_incluidas = sorted(
+            d["dezena"] for d in todas
+            if d.get("em_chama") or d["classificacao"] == "quente"
+        )
+
+        sugestoes.append({
+            "repetidas_alvo": repetidas_alvo,
+            "dezenas": dezenas,
+            "pares": sum(1 for d in dezenas if d in PAR),
+            "impares": sum(1 for d in dezenas if d in IMPAR),
+            "repetidas_reais": len(escolhidas_repetir),
+            "quentes_incluidas": quentes_incluidas,
+        })
+
+    return sugestoes
+
+
 def _calcular_stats(dezenas: list[int], ultimo_dezenas: list[int]) -> dict:
     s = set(dezenas)
     pares = sum(1 for d in dezenas if d % 2 == 0)
