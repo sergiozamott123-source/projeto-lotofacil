@@ -246,6 +246,105 @@ def situacao_dezenas_ultimo_concurso(db: Session) -> dict:
     }
 
 
+ETAPAS = [
+    {"numero": 1, "nome": "Arranque", "inicio": 1, "fim": 5},
+    {"numero": 2, "nome": "Metade inicial", "inicio": 6, "fim": 10},
+    {"numero": 3, "nome": "Metade central", "inicio": 11, "fim": 15},
+    {"numero": 4, "nome": "Metade final", "inicio": 16, "fim": 20},
+    {"numero": 5, "nome": "Encerramento", "inicio": 21, "fim": 25},
+]
+
+# Cada etapa tem 5 dezenas; cada concurso sorteia 15 das 25 dezenas (60%).
+# Por isso o "esperado" — sem nenhum viés — é de 3,0 dezenas de cada etapa
+# por concurso. Serve só como referência neutra de comparação, não como
+# alvo a perseguir.
+_MEDIA_ESPERADA_POR_ETAPA = 3.0
+_LIMIAR_DESVIO_TENDENCIA = 0.5  # abaixo disso, consideramos "equilibrada"
+
+
+def analise_etapas(db: Session, n_concursos: int = 5) -> dict:
+    """
+    Divide as 25 dezenas em 5 etapas fixas de 5 dezenas cada (1-5, 6-10,
+    11-15, 16-20, 21-25) — inspirado na ideia de "setores" de um circuito:
+    em vez de olhar só pra dezena individual, dá pra ver como cada trecho
+    da grade se comportou nos concursos mais recentes.
+
+    Para os últimos `n_concursos` (padrão 5), calcula por etapa: quantas
+    dezenas dela saíram em cada concurso, o total e a média no período, a
+    comparação com o esperado neutro (3,0 dezenas/concurso, já que cada
+    etapa tem 5 das 25 dezenas e cada concurso sorteia 60% delas), e quais
+    dezenas dessa etapa mais se repetiram no período.
+
+    É leitura descritiva do comportamento recente, no mesmo espírito das
+    demais seções do relatório — não é sinal preditivo nem critério
+    validado de composição (esses seguem sendo só paridade, repetidas e
+    ciclo, documentados em criterios-e-jogos.md).
+    """
+    sorteios = (
+        db.query(models.Sorteio)
+        .order_by(models.Sorteio.numero_concurso.desc())
+        .limit(n_concursos)
+        .all()
+    )
+    if not sorteios:
+        return {"concursos_considerados": [], "n_concursos": 0, "etapas": []}
+
+    concursos_considerados = [s.numero_concurso for s in sorteios]  # mais recente primeiro
+    n = len(sorteios)
+
+    etapas_resultado = []
+    for etapa in ETAPAS:
+        faixa = set(range(etapa["inicio"], etapa["fim"] + 1))
+        contagem_por_concurso = []
+        contagem_dezenas: dict[int, int] = {}
+
+        for s in sorteios:
+            dezenas_na_faixa = sorted(set(s.dezenas) & faixa)
+            contagem_por_concurso.append({
+                "concurso": s.numero_concurso,
+                "quantidade": len(dezenas_na_faixa),
+                "dezenas": dezenas_na_faixa,
+            })
+            for d in dezenas_na_faixa:
+                contagem_dezenas[d] = contagem_dezenas.get(d, 0) + 1
+
+        total = sum(c["quantidade"] for c in contagem_por_concurso)
+        media = round(total / n, 2)
+        desvio = media - _MEDIA_ESPERADA_POR_ETAPA
+
+        if desvio >= _LIMIAR_DESVIO_TENDENCIA:
+            tendencia = "acima"
+        elif desvio <= -_LIMIAR_DESVIO_TENDENCIA:
+            tendencia = "abaixo"
+        else:
+            tendencia = "equilibrada"
+
+        dezenas_recorrentes = sorted(
+            ({"dezena": d, "vezes": v} for d, v in contagem_dezenas.items() if v >= 2),
+            key=lambda x: (-x["vezes"], x["dezena"]),
+        )
+
+        etapas_resultado.append({
+            "etapa": etapa["numero"],
+            "nome": etapa["nome"],
+            "inicio": etapa["inicio"],
+            "fim": etapa["fim"],
+            "contagem_por_concurso": contagem_por_concurso,
+            "total": total,
+            "media": media,
+            "media_esperada": _MEDIA_ESPERADA_POR_ETAPA,
+            "tendencia": tendencia,
+            "dezenas_recorrentes": dezenas_recorrentes,
+        })
+
+    return {
+        "concursos_considerados": concursos_considerados,
+        "n_concursos": n,
+        "media_esperada_por_concurso": _MEDIA_ESPERADA_POR_ETAPA,
+        "etapas": etapas_resultado,
+    }
+
+
 def gerar_sugestoes_fortes(situacao: dict) -> list[dict]:
     """
     Combina os critérios já validados no projeto — paridade (`_PARIDADES_VALIDAS`),

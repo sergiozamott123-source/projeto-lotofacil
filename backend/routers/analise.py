@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.analise import (
+    analise_etapas,
     analise_frequencia,
     analise_paridade,
     analise_repetidas,
@@ -56,7 +57,9 @@ def relatorio_dezenas_pdf(db: Session = Depends(get_db)):
     Gera um PDF com a situação estatística das 25 dezenas em relação ao
     último concurso salvo (sequência ativa/chama para as sorteadas,
     atraso/sequência anterior para as que não saíram, e a classificação
-    de frequência de cada uma) — material de apoio para o usuário
+    de frequência de cada uma), sugestões de apostas combinando os
+    critérios validados do projeto, e o panorama das 5 etapas fixas das
+    dezenas nos últimos concursos — material de apoio para o usuário
     estudar antes de montar um jogo no Jogo Manual.
     """
     situacao = situacao_dezenas_ultimo_concurso(db)
@@ -65,7 +68,8 @@ def relatorio_dezenas_pdf(db: Session = Depends(get_db)):
 
     ciclo = ciclo_atual(db)
     sugestoes = gerar_sugestoes_fortes(situacao)
-    pdf_bytes = gerar_pdf_situacao_dezenas(situacao, ciclo, sugestoes)
+    etapas = analise_etapas(db)
+    pdf_bytes = gerar_pdf_situacao_dezenas(situacao, ciclo, sugestoes, etapas)
 
     nome_arquivo = f"lotofacil-situacao-dezenas-concurso-{situacao['numero_concurso']}.pdf"
     return StreamingResponse(

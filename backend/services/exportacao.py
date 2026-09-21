@@ -292,6 +292,98 @@ def _tabela_sugestoes(sugestoes: list[dict]) -> Table:
     return t
 
 
+_TENDENCIA_LABEL = {
+    "acima": "Acima do esperado",
+    "abaixo": "Abaixo do esperado",
+    "equilibrada": "Equilibrada",
+}
+
+
+def _tabela_etapas(etapas_info: dict) -> Table:
+    estilo_celula = ParagraphStyle(
+        "CelulaEtapa", fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#334155"),
+    )
+    estilo_celula_negrito = ParagraphStyle(
+        "CelulaEtapaNegrito", parent=estilo_celula, fontName="Helvetica-Bold",
+    )
+
+    cabecalho = [
+        "Etapa", "Faixa", "Sequência\n(mais recente → mais antiga)",
+        "Total / Média", "Tendência", "Dezenas que mais voltaram",
+    ]
+    dados = [cabecalho]
+    for etapa in etapas_info["etapas"]:
+        quantidades_fmt = " · ".join(str(c["quantidade"]) for c in etapa["contagem_por_concurso"])
+        total_media_fmt = f"{etapa['total']} (méd. {etapa['media']:.1f})"
+        tendencia_fmt = _TENDENCIA_LABEL[etapa["tendencia"]]
+        if etapa["dezenas_recorrentes"]:
+            recorrentes_fmt = ", ".join(
+                f"{_fmt_dezena(r['dezena'])} ({r['vezes']}x)" for r in etapa["dezenas_recorrentes"]
+            )
+        else:
+            recorrentes_fmt = "—"
+
+        dados.append([
+            Paragraph(f"{etapa['etapa']} — {etapa['nome']}", estilo_celula_negrito),
+            f"{_fmt_dezena(etapa['inicio'])}–{_fmt_dezena(etapa['fim'])}",
+            quantidades_fmt,
+            total_media_fmt,
+            tendencia_fmt,
+            Paragraph(recorrentes_fmt, estilo_celula),
+        ])
+
+    col_widths = [3.6*cm, 2.0*cm, 3.4*cm, 2.8*cm, 3.4*cm, 8.0*cm]
+    t = Table(dados, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), ROXO),
+        ("TEXTCOLOR", (0, 0), (-1, 0), COR_HEADER_TXT),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8.6),
+        ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (1, 1), (-1, -1), 8.8),
+        ("ALIGN", (1, 0), (4, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (5, 0), (5, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.6, BORDA),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 1), (0, -1), 8),
+        ("LEFTPADDING", (5, 1), (5, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROXO_CLARO]),
+    ]))
+    return t
+
+
+def _comentario_etapa(etapa: dict, concursos_considerados: list[int]) -> str:
+    """Monta o comentário de projeção de uma etapa, sempre a partir dos
+    números calculados — nunca hardcoded — pra continuar correto em
+    qualquer concurso futuro."""
+    mais_recente = concursos_considerados[0]
+    mais_antigo = concursos_considerados[-1]
+    faixa_fmt = f"{_fmt_dezena(etapa['inicio'])} a {_fmt_dezena(etapa['fim'])}"
+
+    tendencia_txt = {
+        "acima": "um ritmo acima do esperado nesse trecho",
+        "abaixo": "um ritmo abaixo do esperado nesse trecho",
+        "equilibrada": "um ritmo equilibrado com o esperado",
+    }[etapa["tendencia"]]
+
+    texto = (
+        f'<font name="Helvetica-Bold">Etapa {etapa["etapa"]} — {etapa["nome"]} '
+        f'(dezenas {faixa_fmt}):</font> saíram {etapa["total"]} dezenas desta faixa nos concursos '
+        f'#{mais_antigo} a #{mais_recente} — média de {etapa["media"]:.1f} por sorteio, ante um '
+        f'esperado neutro de {etapa["media_esperada"]:.1f} ({tendencia_txt}).'
+    )
+    if etapa["dezenas_recorrentes"]:
+        top = etapa["dezenas_recorrentes"][:3]
+        desc = ", ".join(f"{_fmt_dezena(r['dezena'])} ({r['vezes']}x)" for r in top)
+        texto += f" As que mais voltaram nesse trecho: {desc}."
+    else:
+        texto += " Nenhuma dezena dessa faixa se repetiu mais de uma vez no período."
+    return texto
+
+
 def _construir_destaques(situacao: dict, ciclo: dict) -> str:
     """Monta o parágrafo de destaques dinamicamente a partir dos dados
     calculados — nunca com números fixos, pra continuar correto em
@@ -328,13 +420,21 @@ def _construir_destaques(situacao: dict, ciclo: dict) -> str:
     return "Destaques do concurso: " + "; ".join(partes) + "."
 
 
-def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict, sugestoes: list[dict] | None = None) -> bytes:
+def gerar_pdf_situacao_dezenas(
+    situacao: dict,
+    ciclo: dict,
+    sugestoes: list[dict] | None = None,
+    etapas: dict | None = None,
+) -> bytes:
     """Gera o relatório em PDF com a situação estatística das 25 dezenas
     em relação ao último concurso salvo — material de apoio para o
     usuário estudar antes de montar um jogo no Jogo Manual. Quando
     `sugestoes` é passado (ver `services.analise.gerar_sugestoes_fortes`),
     inclui também uma seção de recomendação combinando paridade, meta de
-    repetidas e dezenas quentes/em chama."""
+    repetidas e dezenas quentes/em chama. Quando `etapas` é passado (ver
+    `services.analise.analise_etapas`), inclui uma seção com o panorama
+    das 5 etapas fixas das 25 dezenas nos últimos concursos. As seções
+    opcionais são numeradas dinamicamente, na ordem em que aparecem."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -422,8 +522,10 @@ def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict, sugestoes: list[dict
         nota_style,
     ))
 
+    numero_secao = 3
+
     if sugestoes:
-        elementos.append(Paragraph("3. Sugestões de apostas — recomendação combinada", secao_style))
+        elementos.append(Paragraph(f"{numero_secao}. Sugestões de apostas — recomendação combinada", secao_style))
         elementos.append(Paragraph(
             "Combinando os critérios já validados no sistema — paridade equilibrada, meta de repetidas em "
             f"relação ao concurso #{numero} e as dezenas com sinal mais forte de \"quente\" nos sorteios "
@@ -443,6 +545,43 @@ def gerar_pdf_situacao_dezenas(situacao: dict, ciclo: dict, sugestoes: list[dict
             "ajustando à vontade.",
             nota_style,
         ))
+        numero_secao += 1
+
+    if etapas and etapas.get("etapas"):
+        concursos_considerados = etapas["concursos_considerados"]
+        mais_recente = concursos_considerados[0]
+        mais_antigo = concursos_considerados[-1]
+        n_concursos = etapas["n_concursos"]
+
+        elementos.append(Paragraph(f"{numero_secao}. Panorama por etapas das dezenas", secao_style))
+        elementos.append(Paragraph(
+            "As 25 dezenas foram divididas em 5 etapas fixas de 5 dezenas cada — como os setores de um "
+            "circuito — pra ajudar a enxergar como cada trecho da grade se comportou nos concursos mais "
+            f"recentes (#{mais_antigo} a #{mais_recente}, {n_concursos} concurso"
+            + ("s" if n_concursos != 1 else "")
+            + f"). Como cada etapa tem 5 das 25 dezenas e cada concurso sorteia 15 (60%), o esperado neutro, "
+            f"sem nenhum viés, é de {etapas['media_esperada_por_concurso']:.1f} dezenas de cada etapa por "
+            "sorteio — as comparações abaixo usam essa referência.",
+            corpo_style,
+        ))
+        elementos.append(Spacer(1, 6))
+        elementos.append(_tabela_etapas(etapas))
+        elementos.append(Spacer(1, 10))
+
+        for etapa in etapas["etapas"]:
+            elementos.append(Paragraph(_comentario_etapa(etapa, concursos_considerados), corpo_style))
+            elementos.append(Spacer(1, 4))
+
+        elementos.append(Spacer(1, 4))
+        elementos.append(Paragraph(
+            '<font name="Helvetica-Bold">Leitura descritiva, não preditiva:</font> este panorama por etapas '
+            "descreve como cada trecho das 25 dezenas se comportou nos concursos mais recentes — não é um "
+            "critério validado de composição (esses seguem sendo paridade, repetidas e ciclo, documentados "
+            "no projeto) nem altera a probabilidade real de qualquer dezena sair no próximo concurso. Use "
+            "como mais uma referência para organizar seus jogos manuais entre as etapas, à sua maneira.",
+            nota_style,
+        ))
+        numero_secao += 1
 
     doc.build(elementos)
     return buffer.getvalue()
