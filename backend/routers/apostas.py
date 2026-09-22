@@ -17,6 +17,10 @@ from services.exportacao import gerar_pdf_apostas, gerar_pdf_pos_jogo_individual
 router = APIRouter(prefix="/apostas", tags=["apostas"])
 
 
+class AtualizarConcursoAlvo(BaseModel):
+    numero_concurso_alvo: int
+
+
 class ConferirResult(BaseModel):
     aposta_id: int
     numero_concurso: int
@@ -233,6 +237,29 @@ def conferir_aposta(aposta_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(jogo)
     return jogo
+
+
+@router.patch("/{aposta_id}/concurso-alvo", response_model=schemas.ApostaOut)
+def corrigir_concurso_alvo(aposta_id: int, dados: AtualizarConcursoAlvo, db: Session = Depends(get_db)):
+    """Corrige o concurso-alvo de uma aposta já cadastrada (ex.: erro de
+    digitação ao lançar o jogo — como registrar o concurso 3784 quando o
+    certo era 3785). Se a aposta já havia sido conferida contra o
+    concurso-alvo antigo, essa conferência (agora inválida) é apagada; o
+    usuário deve conferir a aposta novamente depois, já contra o concurso
+    correto."""
+    aposta = db.query(models.Aposta).filter(models.Aposta.id == aposta_id).first()
+    if not aposta:
+        raise HTTPException(status_code=404, detail="Aposta não encontrada")
+
+    if dados.numero_concurso_alvo != aposta.numero_concurso_alvo:
+        db.query(models.JogoRealizado).filter(
+            models.JogoRealizado.aposta_id == aposta_id
+        ).delete()
+        aposta.numero_concurso_alvo = dados.numero_concurso_alvo
+
+    db.commit()
+    db.refresh(aposta)
+    return aposta
 
 
 # --- Pós-jogo: análise crítica de apostas já conferidas contra o resultado
