@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { apostasAPI, jogosAPI } from '../services/api'
+import { apostasAPI, jogosAPI, sorteiosAPI } from '../services/api'
 import { PainelPosJogoIndividual, PainelPosJogoGeral } from '../components/PosJogoPanel'
 
 const FAIXA_LABEL = {
@@ -178,6 +178,21 @@ export default function Apostas() {
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
+
+  // Ao abrir a tela, já filtra pelo último concurso realizado (evita a lista cheia
+  // de todas as apostas). O usuário pode limpar o campo pra ver tudo de novo.
+  useEffect(() => {
+    sorteiosAPI
+      .ultimo()
+      .then((res) => {
+        if (res.data?.numero_concurso) {
+          setFiltroConcurso(String(res.data.numero_concurso))
+        }
+      })
+      .catch(() => {
+        // sem sorteio registrado ainda: mantém sem filtro (lista tudo, como antes)
+      })
+  }, [])
 
   const jogosPorAposta = Object.fromEntries(jogos.map((j) => [j.aposta_id, j]))
 
