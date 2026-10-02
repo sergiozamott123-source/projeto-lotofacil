@@ -381,6 +381,51 @@ export default function JogarManual() {
         </div>
 
         <div className="space-y-4">
+          {ultimoSorteioInfo && ultimoDezenas && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-slate-700">Sorteio Anterior</h3>
+                <span className="text-xs text-slate-400">
+                  #{ultimoSorteioInfo.numero}
+                  {ultimoSorteioInfo.data && (
+                    <>
+                      {' · '}
+                      {new Date(ultimoSorteioInfo.data).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </>
+                  )}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {[...ultimoDezenas].sort((a, b) => a - b).map((d) => (
+                  <span
+                    key={d}
+                    className="w-8 h-8 rounded-full bg-purple-900 text-white text-xs font-bold flex items-center justify-center"
+                  >
+                    {String(d).padStart(2, '0')}
+                  </span>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                <span>
+                  <span className="font-bold text-purple-700">{ultimoSorteioInfo.pares}</span> pares
+                </span>
+                <span>
+                  <span className="font-bold text-purple-700">{ultimoSorteioInfo.impares}</span> ímpares
+                </span>
+                {ultimoSorteioInfo.repetidasAnterior != null && (
+                  <span>
+                    <span className="font-bold text-purple-700">{ultimoSorteioInfo.repetidasAnterior}</span>{' '}
+                    repetidas do #{ultimoSorteioInfo.numeroAnterior}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <h3 className="font-semibold text-slate-700 mb-4">Detalhes da Aposta</h3>
             <div className="space-y-3">
