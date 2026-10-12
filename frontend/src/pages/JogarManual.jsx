@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { analiseAPI, sorteiosAPI, apostasAPI } from '../services/api'
+import ParidadeRepetidas from '../components/ParidadeRepetidas'
 
 const DEZENAS = Array.from({ length: 25 }, (_, i) => i + 1)
 
@@ -399,7 +400,7 @@ export default function JogarManual() {
                   )}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5 mb-3">
+              <div className="flex flex-wrap gap-1.5">
                 {[...ultimoDezenas].sort((a, b) => a - b).map((d) => (
                   <span
                     key={d}
@@ -409,20 +410,7 @@ export default function JogarManual() {
                   </span>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                <span>
-                  <span className="font-bold text-purple-700">{ultimoSorteioInfo.pares}</span> pares
-                </span>
-                <span>
-                  <span className="font-bold text-purple-700">{ultimoSorteioInfo.impares}</span> ímpares
-                </span>
-                {ultimoSorteioInfo.repetidasAnterior != null && (
-                  <span>
-                    <span className="font-bold text-purple-700">{ultimoSorteioInfo.repetidasAnterior}</span>{' '}
-                    repetidas do #{ultimoSorteioInfo.numeroAnterior}
-                  </span>
-                )}
-              </div>
+              <ParidadeRepetidas historico={historicoSorteios} />
             </div>
           )}
 

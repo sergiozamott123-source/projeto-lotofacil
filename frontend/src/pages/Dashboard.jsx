@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { analiseAPI, sorteiosAPI } from '../services/api'
 import { PainelPosJogoGeral } from '../components/PosJogoPanel'
+import ParidadeRepetidas from '../components/ParidadeRepetidas'
 
 function Ball({ numero, variant = 'default', size = 'md' }) {
   const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
@@ -232,7 +233,7 @@ function CardDinamicaDezenas({ historico }) {
   )
 }
 
-function CardUltimoSorteio({ sorteio, onVerPosJogo }) {
+function CardUltimoSorteio({ sorteio, historico, onVerPosJogo }) {
   if (!sorteio) return <Skeleton className="h-48" />
   const data = new Date(sorteio.data_sorteio).toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -260,16 +261,13 @@ function CardUltimoSorteio({ sorteio, onVerPosJogo }) {
           <Ball key={d} numero={d} variant="destaque" size="sm" />
         ))}
       </div>
-      <div className="mt-3 flex flex-wrap gap-1.5 text-xs text-slate-500">
-        <span>{sorteio.total_pares}P / {sorteio.total_impares}I</span>
-        <span>•</span>
-        <span>
-          {sorteio.dezenas_repetidas?.length ?? 0} repetidas do #{sorteio.numero_concurso_anterior ?? '?'}:{' '}
-          {sorteio.dezenas_repetidas?.length > 0
-            ? sorteio.dezenas_repetidas.map((d) => String(d).padStart(2, '0')).join(', ')
-            : '—'}
-        </span>
-      </div>
+      {sorteio.dezenas_repetidas?.length > 0 && (
+        <p className="mt-3 text-xs text-slate-500">
+          Repetiram do #{sorteio.numero_concurso_anterior}:{' '}
+          {sorteio.dezenas_repetidas.map((d) => String(d).padStart(2, '0')).join(', ')}
+        </p>
+      )}
+      <ParidadeRepetidas historico={historico} />
     </Card>
   )
 }
@@ -478,7 +476,7 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <CardCiclo ciclo={radar?.ciclo} />
-          <CardUltimoSorteio sorteio={ultimoSorteio} onVerPosJogo={setPosJogoGeralConcurso} />
+          <CardUltimoSorteio sorteio={ultimoSorteio} historico={historicoSorteios} onVerPosJogo={setPosJogoGeralConcurso} />
           <CardParidade paridade={radar?.paridade} />
           <CardRepetidas repetidas={radar?.repetidas} />
           <CardDinamicaDezenas historico={historicoSorteios} />
