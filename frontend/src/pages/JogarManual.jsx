@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { analiseAPI, sorteiosAPI, apostasAPI } from '../services/api'
 import ParidadeRepetidas from '../components/ParidadeRepetidas'
+import ZonasSorteio from '../components/ZonasSorteio'
 
 const DEZENAS = Array.from({ length: 25 }, (_, i) => i + 1)
 
@@ -413,6 +414,8 @@ export default function JogarManual() {
               <ParidadeRepetidas historico={historicoSorteios} />
             </div>
           )}
+
+          <ZonasSorteio historico={historicoSorteios} selecionadas={selecionadas} />
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <h3 className="font-semibold text-slate-700 mb-4">Detalhes da Aposta</h3>
