@@ -69,6 +69,27 @@ def _calcular_stats(dezenas: list[int], anterior: list[int] | None) -> dict:
     }
 
 
+
+def recalcular_repetidas_seguinte(db: Session, numero_concurso: int) -> None:
+    """Depois de inserir o concurso N, ajusta `repetidas_anterior` do N+1
+    se ele já existir no banco. Isso acontece quando um concurso entra
+    "atrasado" e preenche um buraco na sequência (ex.: #3805 cadastrado
+    depois do #3806): o N+1 foi gravado sem ter com quem comparar e ficou
+    com repetidas = 0. Recebe a sessão já com o N salvo e faz o commit."""
+    atual = db.query(models.Sorteio).filter(models.Sorteio.numero_concurso == numero_concurso).first()
+    seguinte = db.query(models.Sorteio).filter(models.Sorteio.numero_concurso == numero_concurso + 1).first()
+    if not atual or not seguinte:
+        return
+    novo = len(set(seguinte.dezenas) & set(atual.dezenas))
+    if seguinte.repetidas_anterior != novo:
+        logger.info(
+            "Concurso %d: repetidas_anterior corrigido de %d para %d (buraco preenchido pelo %d).",
+            seguinte.numero_concurso, seguinte.repetidas_anterior, novo, numero_concurso,
+        )
+        seguinte.repetidas_anterior = novo
+        db.commit()
+
+
 def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
     dados = _buscar_dados_sorteio()
     numero = dados["numero"]
@@ -87,6 +108,12 @@ def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
         .filter(models.Sorteio.numero_concurso == numero - 1)
         .first()
     )
+    if anterior is None and numero > 1:
+        logger.warning(
+            "Concurso %d inserido, mas o %d não está no banco — repetidas ficará 0 "
+            "até o %d ser cadastrado (o cadastro dele corrige este valor sozinho).",
+            numero, numero - 1, numero - 1,
+        )
     stats = _calcular_stats(dezenas, anterior.dezenas if anterior else None)
     sorteio = models.Sorteio(
         numero_concurso=numero,
@@ -98,6 +125,7 @@ def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
     db.commit()
     db.refresh(sorteio)
     logger.info("Concurso %d inserido com sucesso.", numero)
+    recalcular_repetidas_seguinte(db, numero)
     return {
         "status": "inserido",
         "numero_concurso": numero,

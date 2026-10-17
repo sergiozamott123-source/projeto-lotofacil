@@ -16,7 +16,7 @@ import logging
 from sqlalchemy.orm import Session
 
 import models
-from services.scraper import buscar_e_salvar_ultimo_sorteio, _calcular_stats
+from services.scraper import buscar_e_salvar_ultimo_sorteio, _calcular_stats, recalcular_repetidas_seguinte
 from services.conferencia import conferir_pendentes_e_notificar
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,9 @@ def registrar_sorteio_manual(db: Session, numero_concurso: int, data_sorteio, de
     db.commit()
     db.refresh(sorteio)
     logger.info("Concurso %d inserido manualmente com sucesso.", numero_concurso)
+    # Se este cadastro preencheu um buraco, o concurso seguinte foi gravado
+    # sem ter com quem comparar — corrige as repetidas dele agora.
+    recalcular_repetidas_seguinte(db, numero_concurso)
 
     conferencias = conferir_pendentes_e_notificar(db)
     logger.info(
