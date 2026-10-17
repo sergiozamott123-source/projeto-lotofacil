@@ -11,6 +11,7 @@ from database import get_db
 import models
 import schemas
 from services.analise import analise_pos_jogo_individual, analise_pos_jogo_geral
+from services.desempenho import calcular_desempenho
 from services.conferencia import conferir_pendentes, conferir_pendentes_e_notificar, FAIXAS_PREMIO
 from services.exportacao import gerar_pdf_apostas, gerar_pdf_pos_jogo_individual, gerar_pdf_pos_jogo_geral
 
@@ -80,6 +81,16 @@ def _executar_conferencia(aposta: models.Aposta, db: Session) -> tuple[models.Jo
     )
     db.add(jogo)
     return jogo, sorteio
+
+
+# GET /desempenho deve vir antes de GET /{aposta_id} para evitar ambiguidade
+@router.get("/desempenho")
+def desempenho_apostas(db: Session = Depends(get_db)):
+    """Desempenho (meta de 11+ acertos) e balanço financeiro das apostas."""
+    try:
+        return calcular_desempenho(db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # GET /resumo deve vir antes de GET /{aposta_id} para evitar ambiguidade

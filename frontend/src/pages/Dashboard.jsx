@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { analiseAPI, sorteiosAPI } from '../services/api'
+import { analiseAPI, sorteiosAPI, apostasAPI } from '../services/api'
 import { PainelPosJogoGeral } from '../components/PosJogoPanel'
 import ParidadeRepetidas from '../components/ParidadeRepetidas'
+import { CardDesempenho, CardBalanco } from '../components/Desempenho'
 
 function Ball({ numero, variant = 'default', size = 'md' }) {
   const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
@@ -285,6 +286,7 @@ export default function Dashboard() {
   const [dezenasManual, setDezenasManual] = useState(new Set())
   const [salvandoManual, setSalvandoManual] = useState(false)
   const [posJogoGeralConcurso, setPosJogoGeralConcurso] = useState(null)
+  const [desempenho, setDesempenho] = useState(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -305,6 +307,18 @@ export default function Dashboard() {
 
   useEffect(() => { carregar() }, [carregar])
 
+  // Carrega à parte: se o desempenho falhar, o resto do Dashboard continua de pé.
+  const carregarDesempenho = useCallback(async () => {
+    try {
+      const res = await apostasAPI.desempenho()
+      setDesempenho(res.data)
+    } catch {
+      setDesempenho(null)
+    }
+  }, [])
+
+  useEffect(() => { carregarDesempenho() }, [carregarDesempenho])
+
   async function atualizar() {
     setAtualizando(true)
     setMsg(null)
@@ -312,6 +326,7 @@ export default function Dashboard() {
       const res = await sorteiosAPI.atualizar()
       setMsg({ tipo: 'ok', texto: res.data.mensagem ?? 'Base atualizada!' })
       await carregar()
+      carregarDesempenho()
     } catch (err) {
       setMsg({ tipo: 'erro', texto: err.response?.data?.detail ?? 'Erro ao atualizar.' })
     } finally {
@@ -362,6 +377,7 @@ export default function Dashboard() {
       setDezenasManual(new Set())
       setMostrarManual(false)
       await carregar()
+      carregarDesempenho()
     } catch (err) {
       setMsg({ tipo: 'erro', texto: err.response?.data?.detail ?? 'Erro ao cadastrar o sorteio.' })
     } finally {
@@ -480,6 +496,13 @@ export default function Dashboard() {
           <CardParidade paridade={radar?.paridade} />
           <CardRepetidas repetidas={radar?.repetidas} />
           <CardDinamicaDezenas historico={historicoSorteios} />
+        </div>
+      )}
+
+      {!loading && desempenho && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <CardDesempenho dados={desempenho} />
+          <CardBalanco dados={desempenho} />
         </div>
       )}
 

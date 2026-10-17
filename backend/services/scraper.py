@@ -7,7 +7,11 @@ import models
 logger = logging.getLogger(__name__)
 
 CAIXA_URL = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/"
-FALLBACK_URL = "https://loteriascaixa-api.herokuapp.com/api/lotofacil/latest"
+FALLBACK_URL = "https://loteriascaixa-api.herokuapp.com/api/lotofacil/"
+
+# Quantos concursos para trás a atualização confere em busca de buracos.
+# 30 concursos = ~5 semanas: cobre qualquer falha razoável do agendamento.
+JANELA_RECUPERACAO = 30
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -36,25 +40,27 @@ def _normalizar_fallback(data: dict) -> dict:
     }
 
 
-def _buscar_dados_sorteio() -> dict:
+def _buscar_dados_sorteio(numero: int | None = None) -> dict:
     """
-    Tenta buscar o sorteio mais recente, na ordem:
+    Busca um sorteio — o mais recente (numero=None) ou um concurso
+    específico — tentando, na ordem:
     1. API oficial da Caixa (pode falhar com 403 em servidores fora do Brasil)
     2. API alternativa (loteriascaixa-api)
     """
+    sufixo = str(numero) if numero else ""
     try:
-        response = httpx.get(CAIXA_URL, timeout=15, headers=HEADERS)
+        response = httpx.get(CAIXA_URL + sufixo, timeout=15, headers=HEADERS)
         response.raise_for_status()
-        logger.info("Dados obtidos direto da Caixa.")
+        logger.info("Dados obtidos direto da Caixa (%s).", numero or "último")
         return _normalizar_caixa(response.json())
     except httpx.HTTPStatusError as e:
         logger.warning("Caixa bloqueou a requisição (status %s). Tentando fallback...", e.response.status_code)
     except Exception as e:
         logger.warning("Erro ao consultar a Caixa diretamente: %s. Tentando fallback...", e)
 
-    response = httpx.get(FALLBACK_URL, timeout=15)
+    response = httpx.get(FALLBACK_URL + (sufixo or "latest"), timeout=15)
     response.raise_for_status()
-    logger.info("Dados obtidos da API alternativa (fallback).")
+    logger.info("Dados obtidos da API alternativa (%s).", numero or "último")
     return _normalizar_fallback(response.json())
 
 
@@ -90,24 +96,11 @@ def recalcular_repetidas_seguinte(db: Session, numero_concurso: int) -> None:
         db.commit()
 
 
-def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
-    dados = _buscar_dados_sorteio()
-    numero = dados["numero"]
-    data_apuracao = dados["data_apuracao"]
-    dezenas = dados["dezenas"]
-
-    existente = db.query(models.Sorteio).filter(
-        models.Sorteio.numero_concurso == numero
-    ).first()
-    if existente:
-        logger.info("Concurso %d já existe no banco.", numero)
-        return {"status": "ja_existe", "numero_concurso": numero}
-
-    anterior = (
-        db.query(models.Sorteio)
-        .filter(models.Sorteio.numero_concurso == numero - 1)
-        .first()
-    )
+def _inserir_sorteio(db: Session, dados: dict) -> dict:
+    """Grava um concurso calculando pares/ímpares e repetidas em relação ao
+    anterior e, se ele preencheu um buraco, corrige as repetidas do seguinte."""
+    numero, dezenas = dados["numero"], dados["dezenas"]
+    anterior = db.query(models.Sorteio).filter(models.Sorteio.numero_concurso == numero - 1).first()
     if anterior is None and numero > 1:
         logger.warning(
             "Concurso %d inserido, mas o %d não está no banco — repetidas ficará 0 "
@@ -115,20 +108,70 @@ def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
             numero, numero - 1, numero - 1,
         )
     stats = _calcular_stats(dezenas, anterior.dezenas if anterior else None)
-    sorteio = models.Sorteio(
+    db.add(models.Sorteio(
         numero_concurso=numero,
-        data_sorteio=data_apuracao,
+        data_sorteio=dados["data_apuracao"],
         dezenas=dezenas,
         **stats,
-    )
-    db.add(sorteio)
+    ))
     db.commit()
-    db.refresh(sorteio)
     logger.info("Concurso %d inserido com sucesso.", numero)
     recalcular_repetidas_seguinte(db, numero)
+    return stats
+
+
+def buscar_e_salvar_ultimo_sorteio(db: Session) -> dict:
+    """
+    Busca o concurso mais recente e TAMBÉM qualquer concurso que tenha
+    ficado faltando nos últimos JANELA_RECUPERACAO concursos — por exemplo,
+    quando a execução de uma noite falhou (Render dormindo, Caixa
+    bloqueando, banco desconectado) e na noite seguinte o "mais recente"
+    já era outro. Assim uma noite perdida se recupera sozinha na próxima.
+    Os buracos são preenchidos do mais antigo para o mais novo, para que
+    as repetidas fiquem certas.
+    """
+    dados_ultimo = _buscar_dados_sorteio()
+    numero = dados_ultimo["numero"]
+
+    inicio = max(1, numero - JANELA_RECUPERACAO)
+    existentes = {
+        n for (n,) in db.query(models.Sorteio.numero_concurso)
+        .filter(models.Sorteio.numero_concurso >= inicio, models.Sorteio.numero_concurso <= numero)
+        .all()
+    }
+    faltando = [n for n in range(inicio, numero + 1) if n not in existentes]
+
+    if not faltando:
+        logger.info("Concurso %d já existe no banco e não há buracos recentes.", numero)
+        return {"status": "ja_existe", "numero_concurso": numero}
+
+    inseridos: list[int] = []
+    falhas: list[int] = []
+    stats_ultimo = None
+    for n in faltando:
+        try:
+            dados = dados_ultimo if n == numero else _buscar_dados_sorteio(n)
+            stats = _inserir_sorteio(db, dados)
+            inseridos.append(n)
+            if n == numero:
+                stats_ultimo = stats
+        except Exception as exc:
+            db.rollback()
+            falhas.append(n)
+            logger.warning("Não consegui recuperar o concurso %d: %s", n, exc)
+
+    recuperados = [n for n in inseridos if n != numero]
+    if recuperados:
+        logger.info("Concursos recuperados (estavam faltando): %s", recuperados)
+
+    if not inseridos:
+        return {"status": "falhou", "numero_concurso": numero, "concursos_com_falha": falhas}
+
     return {
         "status": "inserido",
         "numero_concurso": numero,
-        "dezenas": dezenas,
-        **stats,
+        "dezenas": dados_ultimo["dezenas"] if stats_ultimo else None,
+        **(stats_ultimo or {}),
+        "concursos_recuperados": recuperados,
+        "concursos_com_falha": falhas,
     }
