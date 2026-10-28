@@ -18,6 +18,21 @@ from services.exportacao import gerar_pdf_apostas, gerar_pdf_pos_jogo_individual
 router = APIRouter(prefix="/apostas", tags=["apostas"])
 
 
+class RepetirApostas(BaseModel):
+    numero_concurso_origem: int
+    # Se não vier, usa o próximo concurso ainda não sorteado
+    # (o maior entre origem + 1 e último sorteio + 1).
+    numero_concurso_destino: Optional[int] = None
+
+
+class RepetirApostasResult(BaseModel):
+    numero_concurso_origem: int
+    numero_concurso_destino: int
+    criadas: int
+    ja_existiam: int
+    apostas: List[schemas.ApostaOut]
+
+
 class AtualizarConcursoAlvo(BaseModel):
     numero_concurso_alvo: int
 
@@ -168,6 +183,65 @@ def criar_aposta(aposta: schemas.ApostaCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_aposta)
     return db_aposta
+
+
+@router.post("/repetir", response_model=RepetirApostasResult)
+def repetir_apostas(dados: RepetirApostas, db: Session = Depends(get_db)):
+    """
+    "Repetir jogos": copia todas as apostas de um concurso para outro
+    (por padrão, o próximo), com as mesmas dezenas e nomes. As originais não
+    mudam. Se uma aposta com as mesmas dezenas já existir no destino, não
+    duplica — assim, clicar duas vezes sem querer não cria cópias repetidas.
+    As cópias ficam pendentes e são conferidas sozinhas quando o resultado sair.
+    """
+    origem = dados.numero_concurso_origem
+    originais = (
+        db.query(models.Aposta)
+        .filter(models.Aposta.numero_concurso_alvo == origem)
+        .order_by(models.Aposta.id)
+        .all()
+    )
+    if not originais:
+        raise HTTPException(status_code=404, detail=f"Nenhuma aposta encontrada para o concurso {origem}.")
+
+    ultimo = db.query(func.max(models.Sorteio.numero_concurso)).scalar() or 0
+    destino = dados.numero_concurso_destino or max(origem + 1, ultimo + 1)
+    if destino == origem:
+        raise HTTPException(status_code=400, detail="O concurso de destino precisa ser diferente do de origem.")
+
+    ja_no_destino = {
+        tuple(sorted(a.dezenas))
+        for a in db.query(models.Aposta).filter(models.Aposta.numero_concurso_alvo == destino).all()
+    }
+
+    novas = []
+    ja_existiam = 0
+    for a in originais:
+        chave = tuple(sorted(a.dezenas))
+        if chave in ja_no_destino:
+            ja_existiam += 1
+            continue
+        nova = models.Aposta(
+            nome=a.nome,
+            dezenas=sorted(a.dezenas),
+            numero_concurso_alvo=destino,
+            origem=a.origem,
+        )
+        db.add(nova)
+        novas.append(nova)
+        ja_no_destino.add(chave)
+
+    db.commit()
+    for n in novas:
+        db.refresh(n)
+
+    return RepetirApostasResult(
+        numero_concurso_origem=origem,
+        numero_concurso_destino=destino,
+        criadas=len(novas),
+        ja_existiam=ja_existiam,
+        apostas=novas,
+    )
 
 
 # POST /conferir-todas deve vir antes de POST /{aposta_id}/conferir

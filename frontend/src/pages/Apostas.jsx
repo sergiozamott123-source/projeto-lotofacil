@@ -159,6 +159,9 @@ export default function Apostas() {
   const [exportando, setExportando] = useState(false)
   const [posJogoApostaId, setPosJogoApostaId] = useState(null)
   const [posJogoGeralConcurso, setPosJogoGeralConcurso] = useState(null)
+  const [ultimoConcurso, setUltimoConcurso] = useState(null)
+  const [repetindo, setRepetindo] = useState(null) // { origem, destino, qtd } enquanto a confirmação está aberta
+  const [salvandoRepeticao, setSalvandoRepeticao] = useState(false)
 
   const carregar = useCallback(async () => {
     try {
@@ -186,6 +189,7 @@ export default function Apostas() {
       .ultimo()
       .then((res) => {
         if (res.data?.numero_concurso) {
+          setUltimoConcurso(res.data.numero_concurso)
           setFiltroConcurso(String(res.data.numero_concurso))
         }
       })
@@ -267,6 +271,35 @@ export default function Apostas() {
     }
   }
 
+  function abrirRepeticao() {
+    const origem = parseInt(filtroConcurso)
+    const qtd = apostas.filter((a) => a.numero_concurso_alvo === origem).length
+    const destino = Math.max(origem + 1, (ultimoConcurso ?? 0) + 1)
+    setRepetindo({ origem, destino: String(destino), qtd })
+  }
+
+  async function confirmarRepeticao() {
+    const destino = parseInt(repetindo.destino)
+    if (!destino || destino === repetindo.origem) return
+    setSalvandoRepeticao(true)
+    setMsg(null)
+    try {
+      const res = await apostasAPI.repetir(repetindo.origem, destino)
+      const { criadas, ja_existiam, numero_concurso_destino } = res.data
+      const partes = []
+      if (criadas) partes.push(`${criadas} jogo${criadas !== 1 ? 's' : ''} repetido${criadas !== 1 ? 's' : ''} para o concurso ${numero_concurso_destino}`)
+      if (ja_existiam) partes.push(`${ja_existiam} já estava${ja_existiam !== 1 ? 'm' : ''} lançado${ja_existiam !== 1 ? 's' : ''} lá e não foi duplicado`)
+      setMsg({ tipo: 'ok', texto: `✓ ${partes.join(' · ')}.` })
+      setRepetindo(null)
+      await carregar()
+      setFiltroConcurso(String(numero_concurso_destino))
+    } catch (err) {
+      setMsg({ tipo: 'erro', texto: err.response?.data?.detail ?? 'Erro ao repetir os jogos.' })
+    } finally {
+      setSalvandoRepeticao(false)
+    }
+  }
+
   const pendentes = apostas.filter((a) => !jogosPorAposta[a.id])
   const apostasFiltradas = filtroConcurso
     ? apostas.filter((a) => String(a.numero_concurso_alvo) === filtroConcurso)
@@ -315,7 +348,54 @@ export default function Apostas() {
         >
           Análise Pós-Jogo do Concurso
         </button>
+        <button
+          onClick={abrirRepeticao}
+          disabled={!filtroConcurso || apostasFiltradas.length === 0}
+          title={!filtroConcurso ? 'Informe o número do concurso acima para repetir os jogos dele' : undefined}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-40"
+        >
+          🔁 Repetir no próximo concurso
+        </button>
       </div>
+
+      {repetindo && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+          <p className="text-sm text-slate-700 mb-3">
+            Repetir os <strong>{repetindo.qtd} jogo{repetindo.qtd !== 1 ? 's' : ''}</strong> do concurso{' '}
+            <strong>{repetindo.origem}</strong> no concurso:
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              value={repetindo.destino}
+              onChange={(e) => setRepetindo((r) => ({ ...r, destino: e.target.value }))}
+              className="w-32 px-3 py-2 border border-emerald-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            />
+            <button
+              onClick={confirmarRepeticao}
+              disabled={salvandoRepeticao || !parseInt(repetindo.destino) || parseInt(repetindo.destino) === repetindo.origem}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl shadow transition-all disabled:opacity-40"
+            >
+              {salvandoRepeticao ? 'Repetindo…' : 'Confirmar'}
+            </button>
+            <button
+              onClick={() => setRepetindo(null)}
+              disabled={salvandoRepeticao}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+          </div>
+          {ultimoConcurso != null && parseInt(repetindo.destino) <= ultimoConcurso && (
+            <p className="text-xs text-amber-700 mt-2">
+              Atenção: o concurso {repetindo.destino} já foi sorteado — depois de repetir, use o botão "Conferir Todas" para conferi-los contra esse resultado.
+            </p>
+          )}
+          <p className="text-xs text-slate-500 mt-2">
+            Mesmas dezenas e nomes. Os jogos originais não mudam, e um jogo que já esteja lançado no destino não é duplicado.
+          </p>
+        </div>
+      )}
 
       {msg && (
         <div

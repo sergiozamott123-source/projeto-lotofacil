@@ -41,6 +41,8 @@ export const apostasAPI = {
   conferir: (id) => api.post(`/apostas/${id}/conferir`),
   conferirTodas: () => api.post('/apostas/conferir-todas'),
   resumo: () => api.get('/apostas/resumo'),
+  repetir: (origem, destino) =>
+    api.post('/apostas/repetir', { numero_concurso_origem: origem, numero_concurso_destino: destino ?? null }),
   desempenho: () => api.get('/apostas/desempenho'),
   exportarPdf: (numeroConcursoAlvo) =>
     api.get('/apostas/exportar-pdf', {
